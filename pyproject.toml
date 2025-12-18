@@ -1,0 +1,122 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spesion"
+version = "0.1.0"
+description = "SPESION - Sistema Multi-Agente Personal tipo Jarvis"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Eric Gonzalez Duro", email = "eric@example.com"}
+]
+requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+keywords = ["ai", "assistant", "multi-agent", "langchain", "langgraph"]
+
+dependencies = [
+    "langgraph>=0.2.0",
+    "langchain>=0.3.0",
+    "langchain-core>=0.3.0",
+    "langchain-community>=0.3.0",
+    "langchain-ollama>=0.2.0",
+    "langchain-openai>=0.2.0",
+    "langchain-anthropic>=0.2.0",
+    "chromadb>=0.5.0",
+    "sentence-transformers>=3.0.0",
+    "python-telegram-bot>=21.0",
+    "faster-whisper>=1.0.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "httpx>=0.27.0",
+    "arxiv>=2.1.0",
+    "yfinance>=0.2.40",
+    "notion-client>=2.2.0",
+    "PyGithub>=2.3.0",
+    "garminconnect>=0.2.0",
+    "duckduckgo-search>=6.0.0",
+    "docker>=7.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "black>=24.0.0",
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+]
+google = [
+    "google-api-python-client>=2.0.0",
+    "google-auth-httplib2>=0.2.0",
+    "google-auth-oauthlib>=1.2.0",
+]
+tavily = [
+    "tavily-python>=0.5.0",
+]
+all = [
+    "spesion[dev,google,tavily]",
+]
+
+[project.scripts]
+spesion = "main:main"
+
+[project.urls]
+Homepage = "https://github.com/ericgonzalez/spesion"
+Documentation = "https://github.com/ericgonzalez/spesion#readme"
+Repository = "https://github.com/ericgonzalez/spesion.git"
+Issues = "https://github.com/ericgonzalez/spesion/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+include = '\.pyi?$'
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # Pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by black)
+    "B008",  # do not perform function calls in argument defaults
+]
+
+[tool.ruff.isort]
+known-first-party = ["src"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+

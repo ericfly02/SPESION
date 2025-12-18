@@ -1,0 +1,103 @@
+# SPESION - Docker Compose Configuration
+version: '3.8'
+
+services:
+  # ==========================================================================
+  # SPESION - Servicio Principal
+  # ==========================================================================
+  spesion:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: spesion
+    restart: unless-stopped
+    environment:
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # LLM
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CLOUD_PROVIDER=${CLOUD_PROVIDER:-openai}
+      # Telegram
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_ALLOWED_USER_IDS=${TELEGRAM_ALLOWED_USER_IDS}
+      # APIs
+      - NOTION_API_KEY=${NOTION_API_KEY}
+      - GARMIN_EMAIL=${GARMIN_EMAIL}
+      - GARMIN_PASSWORD=${GARMIN_PASSWORD}
+      - STRAVA_CLIENT_ID=${STRAVA_CLIENT_ID}
+      - STRAVA_CLIENT_SECRET=${STRAVA_CLIENT_SECRET}
+      - STRAVA_REFRESH_TOKEN=${STRAVA_REFRESH_TOKEN}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+      # Storage
+      - CHROMA_PERSIST_DIR=/app/data/chroma
+      - SQLITE_DB_PATH=/app/data/spesion.db
+    volumes:
+      - spesion-data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # Para sandbox
+    depends_on:
+      - ollama
+    networks:
+      - spesion-network
+
+  # ==========================================================================
+  # OLLAMA - LLM Local
+  # ==========================================================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: spesion-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    # Para CPU (sin GPU)
+    # Si tienes GPU NVIDIA, añade:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    networks:
+      - spesion-network
+
+  # ==========================================================================
+  # SANDBOX - Ejecución Segura de Código
+  # ==========================================================================
+  sandbox:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.sandbox
+    container_name: spesion-sandbox
+    # No se inicia automáticamente, se usa bajo demanda
+    profiles:
+      - sandbox
+    network_mode: none  # Sin acceso a red
+    mem_limit: 256m
+    cpus: 0.5
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+
+# ==========================================================================
+# VOLUMES
+# ==========================================================================
+volumes:
+  spesion-data:
+    driver: local
+  ollama-data:
+    driver: local
+
+# ==========================================================================
+# NETWORKS
+# ==========================================================================
+networks:
+  spesion-network:
+    driver: bridge
+

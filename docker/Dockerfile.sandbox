@@ -1,0 +1,32 @@
+# SPESION - Dockerfile para Sandbox de Código
+# Imagen minimalista para ejecución segura de código Python
+
+FROM python:3.11-alpine
+
+# Variables de entorno
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Crear usuario restringido
+RUN adduser -D -s /bin/sh sandbox
+
+# Instalar solo librerías básicas de Python
+RUN pip install --no-cache-dir \
+    numpy \
+    pandas \
+    matplotlib \
+    requests \
+    pydantic
+
+# Crear directorio de trabajo
+WORKDIR /code
+
+# Cambiar a usuario restringido
+USER sandbox
+
+# Límites de recursos (aplicados en docker run)
+# --memory=256m --cpus=0.5 --network=none
+
+# Comando por defecto (ejecutar script pasado)
+ENTRYPOINT ["python"]
+
