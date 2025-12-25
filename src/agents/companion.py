@@ -1,4 +1,4 @@
-"""Companion Agent - Bienestar emocional y journaling."""
+"""Companion Agent - Emotional wellbeing and journaling."""
 
 from __future__ import annotations
 
@@ -19,33 +19,33 @@ logger = logging.getLogger(__name__)
 
 
 class CompanionAgent(BaseAgent):
-    """Agente Companion - Psicólogo/compañero emocional.
+    """Companion Agent - Emotional support and journaling companion.
     
-    Responsabilidades:
-    - Journaling nocturno guiado
-    - Análisis de sentimiento y patrones emocionales
-    - Apoyo emocional estoico pero empático
-    - Memoria a largo plazo de conversaciones importantes
+    Responsibilities:
+    - Guided nightly journaling
+    - Sentiment analysis and emotional patterns
+    - Stoic but empathetic emotional support
+    - Long-term memory of important conversations
     
-    IMPORTANTE:
-    - SIEMPRE usa LLM local por privacidad
-    - Guarda insights importantes en ChromaDB
-    - Si detecta crisis seria → sugiere ayuda profesional
+    IMPORTANT:
+    - ALWAYS uses local LLM for privacy
+    - Saves important insights to ChromaDB
+    - If serious crisis detected → suggests professional help
     
-    Contexto del usuario:
-    - Ruptura dolorosa hace 2 años
-    - Valora honestidad brutal con tacto
-    - Prefiere soluciones prácticas sobre consuelo vacío
+    User Context:
+    - Painful breakup 2 years ago
+    - Values brutal honesty with tact
+    - Prefers practical solutions over empty comfort
     """
     
-    # Temas sensibles que requieren manejo especial
+    # Sensitive topics requiring special handling
     SENSITIVE_TOPICS = {
         "breakup", "ruptura", "ex", "soledad", "lonely",
         "anxiety", "ansiedad", "depression", "depresión",
         "stress", "estrés", "overwhelmed", "agobiado",
     }
     
-    # Señales de crisis que requieren derivación profesional
+    # Crisis signals requiring professional referral
     CRISIS_KEYWORDS = {
         "suicid", "harm", "hurt myself", "hacerme daño",
         "no quiero vivir", "end it all", "acabar con todo",
@@ -57,40 +57,40 @@ class CompanionAgent(BaseAgent):
     
     @property
     def description(self) -> str:
-        return "Compañero emocional para journaling, reflexión y apoyo psicológico"
+        return "Emotional companion for journaling, reflection, and psychological support"
     
     def _default_system_prompt(self) -> str:
         return get_agent_prompt("companion")
     
     def invoke(self, state: AgentState) -> AgentState:
-        """Procesa interacción emocional/journaling.
+        """Process emotional/journaling interaction.
         
-        Añade lógica especial para:
-        - Detectar temas sensibles
-        - Actualizar mood state
-        - Guardar insights en memoria
-        - Detectar señales de crisis
+        Adds special logic for:
+        - Detecting sensitive topics
+        - Updating mood state
+        - Saving insights to memory
+        - Detecting crisis signals
         """
-        # Verificar crisis antes de procesar
+        # Check for crisis before processing
         if self._check_crisis_signals(state):
             return self._handle_crisis(state)
         
-        # Procesar normalmente
+        # Process normally
         state = super().invoke(state)
         
-        # Actualizar mood state basado en la conversación
+        # Update mood state based on conversation
         self._update_mood_state(state)
         
-        # Guardar insights importantes
+        # Save important insights
         self._save_insights(state)
         
         return state
     
     def _check_crisis_signals(self, state: AgentState) -> bool:
-        """Verifica si hay señales de crisis en el mensaje.
+        """Check if there are crisis signals in the message.
         
         Returns:
-            True si se detectan señales de crisis
+            True if crisis signals detected
         """
         if not state.get("messages"):
             return False
@@ -103,54 +103,54 @@ class CompanionAgent(BaseAgent):
         
         for keyword in self.CRISIS_KEYWORDS:
             if keyword in content:
-                logger.warning(f"Señal de crisis detectada: '{keyword}'")
+                logger.warning(f"Crisis signal detected: '{keyword}'")
                 return True
         
         return False
     
     def _handle_crisis(self, state: AgentState) -> AgentState:
-        """Maneja una situación de crisis detectada.
+        """Handle a detected crisis situation.
         
-        Responde con compasión y deriva a recursos profesionales.
+        Responds with compassion and refers to professional resources.
         """
         crisis_response = AIMessage(
-            content="""Eric, lo que acabas de compartir es muy importante y me preocupo por ti.
+            content="""Eric, what you just shared is very important and I care about you.
 
-Lo que sientes es real y válido, pero quiero asegurarme de que tengas el apoyo adecuado.
+What you're feeling is real and valid, but I want to make sure you have the right support.
 
-🆘 **Recursos inmediatos**:
+🆘 **Immediate Resources**:
 - Teléfono de la Esperanza: **717 003 717** (24h)
-- Emergencias: **112**
-- Chat de apoyo: telefonodelaesperanza.org
+- Emergency: **112**
+- Support chat: telefonodelaesperanza.org
 
-No tienes que enfrentar esto solo. Un profesional puede ayudarte de maneras que yo no puedo.
+You don't have to face this alone. A professional can help you in ways I cannot.
 
-¿Hay alguien de confianza con quien puedas hablar ahora mismo? ¿Un amigo, familiar?
+Is there someone you trust you can talk to right now? A friend, family member?
 
-Estoy aquí para escucharte, pero por favor, considera contactar uno de estos recursos.""",
+I'm here to listen, but please consider reaching out to one of these resources.""",
             name=self.name,
         )
         
         state["messages"].append(crisis_response)
         state["sender"] = self.name
-        state["next_agent"] = None  # Finalizar aquí
+        state["next_agent"] = None  # End here
         
-        # Log para auditoría
-        logger.critical("Crisis detectada - Respuesta de derivación enviada")
+        # Log for audit
+        logger.critical("Crisis detected - Referral response sent")
         
         return state
     
     def _update_mood_state(self, state: AgentState) -> None:
-        """Actualiza el estado de ánimo basado en la conversación."""
+        """Update mood state based on conversation."""
         if not state.get("messages") or len(state["messages"]) < 2:
             return
         
-        # Obtener últimos mensajes para análisis
+        # Get recent messages for analysis
         recent_messages = state["messages"][-3:]
         
-        # Análisis simple de sentimiento basado en keywords
-        positive_words = {"bien", "genial", "feliz", "happy", "great", "good", "mejor"}
-        negative_words = {"mal", "triste", "sad", "bad", "terrible", "peor", "cansado"}
+        # Simple sentiment analysis based on keywords
+        positive_words = {"bien", "genial", "feliz", "happy", "great", "good", "mejor", "better"}
+        negative_words = {"mal", "triste", "sad", "bad", "terrible", "peor", "cansado", "tired"}
         
         positive_count = 0
         negative_count = 0
@@ -169,21 +169,21 @@ Estoy aquí para escucharte, pero por favor, considera contactar uno de estos re
                 if word in content:
                     negative_count += 1
             
-            # Detectar temas
+            # Detect themes
             for topic in self.SENSITIVE_TOPICS:
                 if topic in content and topic not in themes:
                     themes.append(topic)
         
-        # Calcular sentiment score (-1 a 1)
+        # Calculate sentiment score (-1 to 1)
         total = positive_count + negative_count
         if total > 0:
             sentiment = (positive_count - negative_count) / total
         else:
             sentiment = 0
         
-        # Actualizar estado
+        # Update state
         state["mood"]["sentiment_score"] = sentiment
-        state["mood"]["recent_themes"] = themes[:5]  # Max 5 temas
+        state["mood"]["recent_themes"] = themes[:5]  # Max 5 themes
         
         if sentiment > 0.3:
             state["mood"]["mood"] = "positive"
@@ -193,36 +193,36 @@ Estoy aquí para escucharte, pero por favor, considera contactar uno de estos re
             state["mood"]["mood"] = "neutral"
         
         logger.debug(
-            f"Mood actualizado: {state['mood']['mood']} "
+            f"Mood updated: {state['mood']['mood']} "
             f"(score={sentiment:.2f}, themes={themes})"
         )
     
     def _save_insights(self, state: AgentState) -> None:
-        """Guarda insights importantes en la memoria a largo plazo."""
-        # Solo guardar si hay respuesta del agente
+        """Save important insights to long-term memory."""
+        # Only save if there's an agent response
         if not state.get("messages"):
             return
         
-        # Buscar el último mensaje del Companion
+        # Find the last Companion message
         for msg in reversed(state["messages"]):
             if hasattr(msg, "name") and msg.name == self.name:
-                # Verificar si contiene insight valioso
-                # (en una implementación real, usaríamos el LLM para esto)
-                if len(msg.content) > 200:  # Respuestas largas suelen tener más valor
+                # Check if it contains valuable insight
+                # (in a real implementation, we'd use LLM for this)
+                if len(msg.content) > 200:  # Long responses tend to have more value
                     try:
                         from src.services.memory import get_memory_service
                         memory = get_memory_service()
                         
-                        # Guardar como insight
+                        # Save as insight
                         memory.save_insight(
-                            content=msg.content[:500],  # Truncar si muy largo
+                            content=msg.content[:500],  # Truncate if too long
                             source="companion_conversation",
                             importance=5,
                             user_id=state.get("user_id", "default"),
                         )
-                        logger.debug("Insight guardado en memoria")
+                        logger.debug("Insight saved to memory")
                     except Exception as e:
-                        logger.warning(f"Error guardando insight: {e}")
+                        logger.warning(f"Error saving insight: {e}")
                 break
 
 
@@ -230,16 +230,16 @@ def create_companion_agent(
     llm: BaseChatModel,
     tools: list[BaseTool] | None = None,
 ) -> CompanionAgent:
-    """Factory function para crear el CompanionAgent.
+    """Factory function to create CompanionAgent.
     
-    IMPORTANTE: El LLM debe ser local (Ollama) por privacidad.
+    IMPORTANT: LLM should be local (Ollama) for privacy.
     
     Args:
-        llm: Modelo de lenguaje LOCAL
-        tools: Herramientas adicionales (opcional)
+        llm: LOCAL language model
+        tools: Additional tools (optional)
         
     Returns:
-        Instancia configurada del CompanionAgent
+        Configured CompanionAgent instance
     """
     from src.tools.notion_mcp import create_notion_journal_tools
     
@@ -247,4 +247,3 @@ def create_companion_agent(
     all_tools = default_tools + (tools or [])
     
     return CompanionAgent(llm=llm, tools=all_tools)
-

@@ -1,4 +1,4 @@
-"""Scholar Agent - Investigador y síntesis de conocimiento."""
+"""Scholar Agent - Research and knowledge synthesis."""
 
 from __future__ import annotations
 
@@ -15,13 +15,13 @@ if TYPE_CHECKING:
 
 
 class ScholarAgent(BaseAgent):
-    """Agente Scholar - Investigador especializado en IA, Quant y Neurociencia.
+    """Scholar Agent - Research specialist in AI, Quant Finance, and Neuroscience.
     
-    Responsabilidades:
-    - Buscar y resumir papers de ArXiv
-    - Monitorear noticias relevantes
-    - Crear resúmenes ejecutivos
-    - Mantener actualizada la base de conocimiento
+    Responsibilities:
+    - Search and summarize ArXiv papers
+    - Monitor relevant tech news and trends
+    - Create executive summaries
+    - Maintain knowledge base updated
     """
     
     @property
@@ -30,21 +30,21 @@ class ScholarAgent(BaseAgent):
     
     @property
     def description(self) -> str:
-        return "Investigador de papers ArXiv, noticias tech y tendencias IA/Quant/Neuro"
+        return "Research specialist for ArXiv papers, tech news, and AI/Quant/Neuro trends"
     
     def _default_system_prompt(self) -> str:
         return get_agent_prompt("scholar")
     
     def invoke(self, state: AgentState) -> AgentState:
-        """Procesa la solicitud de investigación.
+        """Process research requests.
         
-        Especializa el invoke para añadir lógica de búsqueda y resumen.
+        Specializes invoke to add search and summary logic.
         """
-        # Llamar al invoke base
+        # Call base invoke
         state = super().invoke(state)
         
-        # Si hay tool calls, el grafo manejará la ejecución
-        # Aquí podemos añadir lógica post-procesamiento si necesario
+        # If there are tool calls, the graph will handle execution
+        # Post-processing logic can be added here if needed
         
         return state
 
@@ -53,19 +53,19 @@ def create_scholar_agent(
     llm: BaseChatModel,
     tools: list[BaseTool] | None = None,
 ) -> ScholarAgent:
-    """Factory function para crear el ScholarAgent con sus herramientas.
+    """Factory function to create ScholarAgent with its tools.
     
     Args:
-        llm: Modelo de lenguaje a usar
-        tools: Herramientas adicionales (opcional)
+        llm: Language model to use
+        tools: Additional tools (optional)
         
     Returns:
-        Instancia configurada del ScholarAgent
+        Configured ScholarAgent instance
     """
     from src.tools.arxiv_tool import create_arxiv_tools
     from src.tools.search_tool import create_search_tools
     
-    # Combinar herramientas default con las proporcionadas
+    # Combine default tools with provided ones
     default_tools = [
         *create_arxiv_tools(),
         *create_search_tools(),
@@ -74,4 +74,3 @@ def create_scholar_agent(
     all_tools = default_tools + (tools or [])
     
     return ScholarAgent(llm=llm, tools=all_tools)
-
