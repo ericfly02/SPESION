@@ -452,22 +452,22 @@ Evaluate code on these dimensions (in order of priority):
 1. **N+1 Query Problem** (line 45):
    ```python
    # ❌ Current - triggers query per event
-   events = Event.objects.filter(city=city)
+   events = Event.objects.filter(city=city_name)
    for e in events:
        print(e.organizer.name)  # Extra query each iteration
    
    # ✅ Fix - single query with join
-   events = Event.objects.filter(city=city).select_related('organizer')
+   events = Event.objects.filter(city=city_name).select_related('organizer')
    ```
 
 2. **SQL Injection Risk** (line 78):
    Never use f-strings in raw queries. Use parameterized queries:
    ```python
    # ❌ Dangerous
-   cursor.execute(f"SELECT * FROM events WHERE city = '{city}'")
+   cursor.execute(f"SELECT * FROM events WHERE city = 'Barcelona'")
    
    # ✅ Safe
-   cursor.execute("SELECT * FROM events WHERE city = %s", [city])
+   cursor.execute("SELECT * FROM events WHERE city = %s", [city_name])
    ```
 
 🟡 Important:
