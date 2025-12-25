@@ -26,11 +26,11 @@ class LLMSettings(BaseSettings):
         description="URL base de Ollama",
     )
     ollama_model_light: str = Field(
-        default="phi3:mini",
+        default="llama3.2:3b",
         description="Modelo ligero para tareas simples/privadas",
     )
     ollama_model_heavy: str = Field(
-        default="llama3:8b-instruct-q4_0",
+        default="llama3.1:8b",
         description="Modelo más potente para tareas complejas locales",
     )
     
