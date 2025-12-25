@@ -1,4 +1,4 @@
-"""Sentinel Agent - DevOps, Security, and Privacy."""
+"""Sentinel Agent - DevOps, Seguridad y Privacidad."""
 
 from __future__ import annotations
 
@@ -20,19 +20,19 @@ logger = logging.getLogger(__name__)
 
 
 class SentinelAgent(BaseAgent):
-    """Sentinel Agent - System guardian and privacy protector.
+    """Agente Sentinel - Guardián del sistema y protector de privacidad.
     
-    Responsibilities:
-    - Detect and sanitize PII before sending to cloud LLMs
-    - Monitor service and MCP status
-    - Audit logs and detect anomalies
-    - Manage backups and recovery
+    Responsabilidades:
+    - Detectar y sanitizar PII antes de enviar a LLMs cloud
+    - Monitorizar estado de servicios y MCPs
+    - Auditar logs y detectar anomalías
+    - Gestionar backups y recuperación
     
-    IMPORTANT: This agent processes ALL messages before
-    they're sent to other agents when privacy_mode is active.
+    IMPORTANTE: Este agente procesa TODOS los mensajes antes
+    de ser enviados a otros agentes cuando privacy_mode está activo.
     """
     
-    # PII patterns to detect
+    # Patrones de PII a detectar
     PII_PATTERNS = {
         "credit_card": r"\b(?:\d{4}[-\s]?){3}\d{4}\b",
         "nie_dni": r"\b[XYZ]?\d{7,8}[A-Z]\b",
@@ -45,15 +45,15 @@ class SentinelAgent(BaseAgent):
         "password": r"(?:password|contraseña|pwd|pass)\s*[:=]\s*\S+",
     }
     
-    # Redaction labels
+    # Labels para redacción
     PII_LABELS = {
-        "credit_card": "[CARD_REDACTED]",
+        "credit_card": "[TARJETA_REDACTED]",
         "nie_dni": "[NIE_DNI_REDACTED]",
-        "phone_spain": "[PHONE_REDACTED]",
+        "phone_spain": "[TELEFONO_REDACTED]",
         "email": "[EMAIL_REDACTED]",
         "iban": "[IBAN_REDACTED]",
-        "passport": "[PASSPORT_REDACTED]",
-        "address": "[ADDRESS_REDACTED]",
+        "passport": "[PASAPORTE_REDACTED]",
+        "address": "[DIRECCION_REDACTED]",
         "api_key": "[API_KEY_REDACTED]",
         "password": "[PASSWORD_REDACTED]",
     }
@@ -64,19 +64,19 @@ class SentinelAgent(BaseAgent):
     
     @property
     def description(self) -> str:
-        return "Privacy guardian, system monitoring, and audit"
+        return "Guardián de privacidad, monitorización de sistema y auditoría"
     
     def _default_system_prompt(self) -> str:
         return get_agent_prompt("sentinel")
     
     def sanitize_text(self, text: str) -> tuple[str, list[dict]]:
-        """Detect and redact PII in text.
+        """Detecta y redacta PII en un texto.
         
         Args:
-            text: Text to sanitize
+            text: Texto a sanitizar
             
         Returns:
-            Tuple of (sanitized text, list of detections)
+            Tuple de (texto sanitizado, lista de detecciones)
         """
         sanitized = text
         detections = []
@@ -86,7 +86,7 @@ class SentinelAgent(BaseAgent):
             for match in matches:
                 detections.append({
                     "type": pii_type,
-                    "original": match.group()[:10] + "...",  # Truncate for log
+                    "original": match.group()[:10] + "...",  # Truncar para log
                     "position": match.span(),
                 })
                 sanitized = sanitized.replace(
@@ -96,22 +96,22 @@ class SentinelAgent(BaseAgent):
         
         if detections:
             logger.warning(
-                f"PII detected and sanitized: {len(detections)} instances"
+                f"PII detectado y sanitizado: {len(detections)} instancias"
             )
         
         return sanitized, detections
     
     def process_incoming(self, state: AgentState) -> AgentState:
-        """Process incoming message for PII detection.
+        """Procesa un mensaje entrante para detectar PII.
         
-        This method should be called BEFORE the supervisor
-        for all new messages.
+        Este método debe ser llamado ANTES del supervisor
+        para todos los mensajes nuevos.
         
         Args:
-            state: Current state
+            state: Estado actual
             
         Returns:
-            State with privacy_mode updated if PII detected
+            Estado con privacy_mode actualizado si se detecta PII
         """
         if not state.get("messages"):
             return state
@@ -120,17 +120,17 @@ class SentinelAgent(BaseAgent):
         if not isinstance(last_message, HumanMessage):
             return state
         
-        # Sanitize message
+        # Sanitizar mensaje
         original_content = last_message.content
         sanitized_content, detections = self.sanitize_text(original_content)
         
         if detections:
-            # Update privacy state
+            # Actualizar estado de privacidad
             state["privacy"]["pii_detected"] = True
             state["privacy"]["sanitized_content"] = sanitized_content
             state["privacy"]["use_local_llm"] = True
             
-            # Determine risk level
+            # Determinar nivel de riesgo
             high_risk_types = {"credit_card", "password", "api_key", "iban"}
             detected_types = {d["type"] for d in detections}
             
@@ -141,11 +141,11 @@ class SentinelAgent(BaseAgent):
             else:
                 state["privacy"]["risk_level"] = "low"
             
-            # Replace message with sanitized version
+            # Reemplazar mensaje con versión sanitizada
             state["messages"][-1] = HumanMessage(content=sanitized_content)
             
             logger.info(
-                f"Message sanitized: {len(detections)} PII, "
+                f"Mensaje sanitizado: {len(detections)} PII, "
                 f"risk={state['privacy']['risk_level']}"
             )
         else:
@@ -154,16 +154,16 @@ class SentinelAgent(BaseAgent):
         return state
     
     def invoke(self, state: AgentState) -> AgentState:
-        """Process audit/system requests."""
-        # If it's an audit request, respond with system status
+        """Procesa solicitudes de auditoría/sistema."""
+        # Si es una solicitud de auditoría, responder con estado del sistema
         state = super().invoke(state)
         return state
     
     def get_system_status(self) -> dict:
-        """Get status of all system services.
+        """Obtiene el estado de todos los servicios del sistema.
         
         Returns:
-            Dict with each service status
+            Dict con estado de cada servicio
         """
         status = {
             "services": {},
@@ -172,18 +172,18 @@ class SentinelAgent(BaseAgent):
             "privacy_stats": {},
         }
         
-        # Check Ollama
+        # Verificar Ollama
         try:
             from src.services.llm_factory import get_factory
             factory = get_factory()
             status["services"]["ollama"] = {
                 "status": "ok" if factory.ollama_available else "error",
-                "model": "llama3.2:3b",
+                "model": "phi3:mini",
             }
         except Exception as e:
             status["services"]["ollama"] = {"status": "error", "error": str(e)}
         
-        # Check ChromaDB
+        # Verificar ChromaDB
         try:
             from src.services.vector_store import get_vector_store
             store = get_vector_store()
@@ -200,17 +200,17 @@ class SentinelAgent(BaseAgent):
         return status
     
     def format_status_report(self, status: dict) -> str:
-        """Format status report for user display.
+        """Formatea el reporte de estado para mostrar al usuario.
         
         Args:
-            status: System status dict
+            status: Dict de estado del sistema
             
         Returns:
-            Formatted string
+            String formateado
         """
         output = "🛡️ **System Status Report**\n\n"
         
-        # Core services
+        # Servicios core
         output += "**Core Services**:\n"
         for service, info in status.get("services", {}).items():
             emoji = "✅" if info.get("status") == "ok" else "❌"
@@ -232,13 +232,13 @@ def create_sentinel_agent(
     llm: BaseChatModel,
     tools: list[BaseTool] | None = None,
 ) -> SentinelAgent:
-    """Factory function to create SentinelAgent.
+    """Factory function para crear el SentinelAgent.
     
     Args:
-        llm: LOCAL language model
-        tools: Additional tools (optional)
+        llm: Modelo de lenguaje LOCAL
+        tools: Herramientas adicionales (opcional)
         
     Returns:
-        Configured SentinelAgent instance
+        Instancia configurada del SentinelAgent
     """
     return SentinelAgent(llm=llm, tools=tools or [])

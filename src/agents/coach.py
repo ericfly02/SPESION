@@ -1,4 +1,4 @@
-"""Coach Agent - Health, Fitness, and Recovery."""
+"""Coach Agent - Salud, Deporte y Recuperación."""
 
 from __future__ import annotations
 
@@ -18,16 +18,16 @@ logger = logging.getLogger(__name__)
 
 
 class CoachAgent(BaseAgent):
-    """Coach Agent - Fitness, recovery, and performance expert.
+    """Agente Coach - Experto en fitness, recuperación y rendimiento.
     
-    Responsibilities:
-    - Analyze Garmin data (HRV, sleep, Body Battery)
-    - Integrate Strava data (activities, workouts)
-    - Suggest adaptive training plans
-    - Monitor recovery status
-    - Alert about overtraining risk
+    Responsabilidades:
+    - Analizar datos de Garmin (HRV, sueño, Body Battery)
+    - Integrar datos de Strava (actividades, entrenamientos)
+    - Sugerir planes de entrenamiento adaptativos
+    - Monitorear estado de recuperación
+    - Alertar sobre riesgo de sobreentrenamiento
     
-    Note: This agent ALWAYS uses local LLM for health data privacy.
+    Nota: Este agente SIEMPRE usa LLM local por privacidad de datos de salud.
     """
     
     @property
@@ -36,28 +36,28 @@ class CoachAgent(BaseAgent):
     
     @property
     def description(self) -> str:
-        return "Fitness expert for Garmin/Strava analysis and training plans"
+        return "Experto en fitness, análisis de Garmin/Strava y planes de entrenamiento"
     
     def _default_system_prompt(self) -> str:
         return get_agent_prompt("coach")
     
     def invoke(self, state: AgentState) -> AgentState:
-        """Process health and sports related requests.
+        """Procesa solicitudes relacionadas con salud y deporte.
         
-        Updates energy_level in state based on available data.
+        Actualiza el energy_level en el estado basado en los datos disponibles.
         """
         state = super().invoke(state)
         
-        # Try to update energy_level if we have data
+        # Intentar actualizar energy_level si tenemos datos
         self._update_energy_state(state)
         
         return state
     
     def _update_energy_state(self, state: AgentState) -> None:
-        """Update energy state based on metrics.
+        """Actualiza el estado de energía basado en métricas.
         
-        This function analyzes executed tools and their results
-        to update the user's energy state.
+        Esta función analiza las herramientas ejecutadas y sus resultados
+        para actualizar el energy state del usuario.
         """
         if not state.get("tool_results"):
             return
@@ -66,19 +66,19 @@ class CoachAgent(BaseAgent):
             if result.get("tool") == "get_garmin_stats":
                 data = result.get("result", {})
                 
-                # Update HRV
+                # Actualizar HRV
                 if "hrv" in data:
                     state["energy"]["hrv_score"] = data["hrv"]
                 
-                # Update sleep quality
+                # Actualizar calidad de sueño
                 if "sleep_score" in data:
                     state["energy"]["sleep_quality"] = data["sleep_score"] / 100
                 
-                # Calculate composite energy level
+                # Calcular nivel de energía compuesto
                 if "body_battery" in data:
                     state["energy"]["level"] = data["body_battery"] / 100
                 
-                # Determine recovery status
+                # Determinar estado de recuperación
                 level = state["energy"]["level"]
                 if level >= 0.8:
                     state["energy"]["recovery_status"] = "excellent"
@@ -93,7 +93,7 @@ class CoachAgent(BaseAgent):
                 state["energy"]["last_updated"] = datetime.now().isoformat()
                 
                 logger.info(
-                    f"Energy state updated: level={level:.2f}, "
+                    f"Energy state actualizado: level={level:.2f}, "
                     f"recovery={state['energy']['recovery_status']}"
                 )
 
@@ -102,14 +102,14 @@ def create_coach_agent(
     llm: BaseChatModel,
     tools: list[BaseTool] | None = None,
 ) -> CoachAgent:
-    """Factory function to create CoachAgent with its tools.
+    """Factory function para crear el CoachAgent con sus herramientas.
     
     Args:
-        llm: Language model to use (preferably local for privacy)
-        tools: Additional tools (optional)
+        llm: Modelo de lenguaje a usar (preferiblemente local)
+        tools: Herramientas adicionales (opcional)
         
     Returns:
-        Configured CoachAgent instance
+        Instancia configurada del CoachAgent
     """
     from src.tools.garmin_mcp import create_garmin_tools
     from src.tools.strava_mcp import create_strava_tools

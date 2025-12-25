@@ -1,4 +1,4 @@
-"""Executive Agent - Productivity and time/energy management."""
+"""Executive Agent - Productividad y gestión de tiempo/energía."""
 
 from __future__ import annotations
 
@@ -19,42 +19,42 @@ logger = logging.getLogger(__name__)
 
 
 class ExecutiveAgent(BaseAgent):
-    """Executive Agent - Chief of Staff and productivity manager.
+    """Agente Executive - Jefe de gabinete y gestor de productividad.
     
-    Responsibilities:
-    - Calendar management and protection
-    - Task prioritization (Eisenhower Matrix)
-    - Work/projects/rest balance
-    - Integration with Coach energy data
+    Responsabilidades:
+    - Gestión del calendario
+    - Priorización de tareas (Eisenhower Matrix)
+    - Balance trabajo/proyectos/descanso
+    - Integración con datos de energía del Coach
     
-    Core Principle: Energy > Time
-    When Coach reports low energy, reschedule demanding tasks.
+    Principio Core: Energía > Tiempo
+    Si el Coach reporta baja energía, reprogramamos tareas pesadas.
     
-    Ideal weekly allocation:
+    Balance semanal ideal:
     - NTTData: 40h
     - Civita: 5-8h
     - Creda: 5-8h
     - WhoHub: 3-5h
-    - Exercise: 5-7h
-    - Rest: 1 full day
+    - Deporte: 5-7h
+    - Descanso: 1 día completo
     """
     
-    # Eisenhower Matrix categories
+    # Categorías de la matriz de Eisenhower
     EISENHOWER_MATRIX = {
-        "do_first": "🔴 Urgent + Important → DO NOW",
-        "schedule": "🟠 Important + Not Urgent → BLOCK TIME",
-        "delegate": "🟡 Urgent + Not Important → DELEGATE/AUTOMATE",
-        "eliminate": "⚪ Neither Urgent nor Important → ELIMINATE",
+        "do_first": "🔴 Urgente + Importante → HACER AHORA",
+        "schedule": "🟠 Importante + No Urgente → BLOQUEAR TIEMPO",
+        "delegate": "🟡 Urgente + No Importante → DELEGAR/AUTOMATIZAR",
+        "eliminate": "⚪ Ni Urgente ni Importante → ELIMINAR",
     }
     
-    # Ideal weekly hour allocation
+    # Asignación de horas semanales ideales
     WEEKLY_ALLOCATION = {
         "nttdata": 40,
         "civita": 7,
         "creda": 7,
         "whohub": 4,
         "sport": 6,
-        "rest": 8,  # One full day
+        "rest": 8,  # Un día completo
     }
     
     @property
@@ -63,28 +63,28 @@ class ExecutiveAgent(BaseAgent):
     
     @property
     def description(self) -> str:
-        return "Chief of Staff for calendar, tasks, and prioritization management"
+        return "Jefe de gabinete para gestión de calendario, tareas y priorización"
     
     def _default_system_prompt(self) -> str:
         return get_agent_prompt("executive")
     
     def invoke(self, state: AgentState) -> AgentState:
-        """Process productivity requests.
+        """Procesa solicitudes de productividad.
         
-        Considers user's energy_level to adjust recommendations.
+        Considera el energy_level del usuario para ajustar recomendaciones.
         """
-        # Check energy before suggesting heavy tasks
+        # Verificar energía antes de sugerir tareas pesadas
         energy_level = state.get("energy", {}).get("level", 0.7)
         
         if energy_level < 0.4:
             logger.info(
-                f"Low energy ({energy_level:.2f}), "
-                "adjusting recommendations"
+                f"Energía baja ({energy_level:.2f}), "
+                "ajustando recomendaciones"
             )
-            # Add low energy context to state
+            # Añadir contexto de baja energía al estado
             state["retrieved_context"] = state.get("retrieved_context", []) + [
-                f"[ALERT] Low energy level: {energy_level:.0%}. "
-                "Prioritize low cognitive effort tasks."
+                f"[ALERTA] Nivel de energía bajo: {energy_level:.0%}. "
+                "Priorizar tareas de bajo esfuerzo cognitivo."
             ]
         
         state = super().invoke(state)
@@ -95,14 +95,14 @@ class ExecutiveAgent(BaseAgent):
         urgent: bool,
         important: bool,
     ) -> str:
-        """Categorize a task according to the Eisenhower Matrix.
+        """Categoriza una tarea según la matriz de Eisenhower.
         
         Args:
-            urgent: Whether the task is urgent
-            important: Whether the task is important
+            urgent: Si la tarea es urgente
+            important: Si la tarea es importante
             
         Returns:
-            Matrix category key
+            Categoría de la matriz
         """
         if urgent and important:
             return "do_first"
@@ -119,55 +119,55 @@ class ExecutiveAgent(BaseAgent):
         tasks: list[dict],
         available_hours: int = 8,
     ) -> list[dict]:
-        """Suggest time blocks based on energy and tasks.
+        """Sugiere bloques de tiempo basados en energía y tareas.
         
         Args:
-            energy_level: Energy level (0-1)
-            tasks: List of tasks with 'name', 'duration', 'cognitive_load'
-            available_hours: Available hours
+            energy_level: Nivel de energía (0-1)
+            tasks: Lista de tareas con 'name', 'duration', 'cognitive_load'
+            available_hours: Horas disponibles
             
         Returns:
-            List of suggested blocks
+            Lista de bloques sugeridos
         """
         blocks = []
         
-        # Sort tasks by cognitive load
+        # Ordenar tareas por carga cognitiva
         sorted_tasks = sorted(
             tasks,
             key=lambda t: t.get("cognitive_load", 0.5),
             reverse=True,
         )
         
-        # If high energy, start with heavy tasks in the morning
+        # Si energía alta, empezar con tareas pesadas por la mañana
         if energy_level >= 0.7:
-            # Deep work first
+            # Deep work primero
             for task in sorted_tasks:
                 if task.get("cognitive_load", 0.5) >= 0.7:
                     blocks.append({
                         "task": task["name"],
-                        "suggested_time": "morning (9-12h)",
+                        "suggested_time": "mañana (9-12h)",
                         "duration": task.get("duration", 2),
-                        "reason": "High energy → deep work first",
+                        "reason": "Energía alta → deep work primero",
                     })
         else:
-            # Light tasks first, heavy if energy improves
+            # Tareas ligeras primero, pesadas si hay energía después
             light_tasks = [t for t in sorted_tasks if t.get("cognitive_load", 0.5) < 0.5]
             heavy_tasks = [t for t in sorted_tasks if t.get("cognitive_load", 0.5) >= 0.5]
             
             for task in light_tasks[:2]:
                 blocks.append({
                     "task": task["name"],
-                    "suggested_time": "morning",
+                    "suggested_time": "mañana",
                     "duration": task.get("duration", 1),
-                    "reason": "Low energy → start easy",
+                    "reason": "Energía baja → empezar suave",
                 })
             
             for task in heavy_tasks:
                 blocks.append({
                     "task": task["name"],
-                    "suggested_time": "afternoon (if energy improves)",
+                    "suggested_time": "tarde (si mejora energía)",
                     "duration": task.get("duration", 2),
-                    "reason": "Consider rescheduling if still low",
+                    "reason": "Considerar reprogramar si sigue baja",
                 })
         
         return blocks
@@ -178,30 +178,30 @@ class ExecutiveAgent(BaseAgent):
         blocks: list[dict],
         alerts: list[str] | None = None,
     ) -> str:
-        """Format the daily plan for user display.
+        """Formatea el plan diario para mostrar al usuario.
         
         Args:
-            energy_level: Energy level
-            blocks: Time blocks
-            alerts: Important alerts
+            energy_level: Nivel de energía
+            blocks: Bloques de tiempo
+            alerts: Alertas importantes
             
         Returns:
-            Formatted plan string
+            String formateado del plan
         """
         energy_emoji = "🔋" if energy_level >= 0.7 else "🪫" if energy_level >= 0.4 else "❌"
         energy_status = (
-            "Optimal for deep work"
+            "Óptimo para deep work"
             if energy_level >= 0.7
-            else "Moderate"
+            else "Moderado"
             if energy_level >= 0.4
-            else "Low - prioritize rest"
+            else "Bajo - priorizar descanso"
         )
         
-        output = f"""📅 **Today's Plan**
+        output = f"""📅 **Plan para Hoy**
 
-{energy_emoji} Energy: {energy_level:.0%} - {energy_status}
+{energy_emoji} Energía: {energy_level:.0%} - {energy_status}
 
-🎯 **Suggested Blocks**:
+🎯 **Bloques sugeridos**:
 """
         for i, block in enumerate(blocks, 1):
             output += f"\n{i}. [{block['suggested_time']}] **{block['task']}** ({block['duration']}h)"
@@ -209,7 +209,7 @@ class ExecutiveAgent(BaseAgent):
                 output += f"\n   _{block['reason']}_"
         
         if alerts:
-            output += "\n\n⚠️ **Alerts**:\n"
+            output += "\n\n⚠️ **Alertas**:\n"
             for alert in alerts:
                 output += f"- {alert}\n"
         
@@ -220,14 +220,14 @@ def create_executive_agent(
     llm: BaseChatModel,
     tools: list[BaseTool] | None = None,
 ) -> ExecutiveAgent:
-    """Factory function to create the ExecutiveAgent with its tools.
+    """Factory function para crear el ExecutiveAgent con sus herramientas.
     
     Args:
-        llm: Language model to use
-        tools: Additional tools (optional)
+        llm: Modelo de lenguaje a usar
+        tools: Herramientas adicionales (opcional)
         
     Returns:
-        Configured ExecutiveAgent instance
+        Instancia configurada del ExecutiveAgent
     """
     from src.tools.calendar_mcp import create_calendar_tools
     from src.tools.notion_mcp import create_notion_tasks_tools

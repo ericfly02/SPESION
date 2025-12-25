@@ -1,4 +1,4 @@
-"""TechLead Agent - Senior Engineering and Code Review."""
+"""TechLead Agent - Ingeniería Senior y Code Review."""
 
 from __future__ import annotations
 
@@ -18,29 +18,29 @@ logger = logging.getLogger(__name__)
 
 
 class TechLeadAgent(BaseAgent):
-    """TechLead Agent - Senior Engineer and system architect.
+    """Agente TechLead - Senior Engineer y arquitecto de sistemas.
     
-    Responsibilities:
-    - Detailed code reviews
-    - Complex debugging
-    - Architecture decisions
-    - Algorithm help
-    - Secure code execution (sandbox)
+    Responsabilidades:
+    - Code reviews detallados
+    - Debugging de problemas complejos
+    - Decisiones de arquitectura
+    - Ayuda con algoritmos
+    - Ejecución segura de código (sandbox)
     
-    User's Stack:
+    Stack del usuario:
     - Backend: Python (Django, FastAPI), MQL5
     - Frontend: React, TypeScript
     - DBs: PostgreSQL, Supabase, SQLite
-    - Infra: Docker, basic AWS
-    - AI/ML: LangChain, LangGraph, RAG
+    - Infra: Docker, AWS básico
+    - IA/ML: LangChain, LangGraph, RAG
     """
     
-    # Code review feedback priorities
+    # Prioridades de feedback en code review
     FEEDBACK_PRIORITIES = {
-        "critical": "🔴 Critical - Blocks deploy",
-        "important": "🟠 Important - Should be fixed",
-        "suggestion": "🟡 Suggestion - Nice to have",
-        "nitpick": "⚪ Nitpick - Style/preference",
+        "critical": "🔴 Crítico - Bloquea deploy",
+        "important": "🟠 Importante - Debería fixearse",
+        "suggestion": "🟡 Sugerencia - Nice to have",
+        "nitpick": "⚪ Nitpick - Estilo/preferencia",
     }
     
     @property
@@ -49,13 +49,13 @@ class TechLeadAgent(BaseAgent):
     
     @property
     def description(self) -> str:
-        return "Senior Engineer for code review, debugging, architecture, and algorithms"
+        return "Senior Engineer para code review, debugging, arquitectura y algoritmos"
     
     def _default_system_prompt(self) -> str:
         return get_agent_prompt("techlead")
     
     def invoke(self, state: AgentState) -> AgentState:
-        """Process engineering requests."""
+        """Procesa solicitudes de ingeniería."""
         state = super().invoke(state)
         return state
     
@@ -63,22 +63,22 @@ class TechLeadAgent(BaseAgent):
         self,
         findings: list[dict],
     ) -> str:
-        """Format code review findings.
+        """Formatea los hallazgos de un code review.
         
         Args:
-            findings: List of findings with keys:
+            findings: Lista de hallazgos con keys:
                 - priority: critical/important/suggestion/nitpick
-                - line: Line number (optional)
-                - description: Problem description
-                - suggestion: Suggested code (optional)
+                - line: Número de línea (opcional)
+                - description: Descripción del problema
+                - suggestion: Código sugerido (opcional)
                 
         Returns:
-            Formatted code review string
+            String formateado del code review
         """
         if not findings:
-            return "✅ No issues found. Clean code!"
+            return "✅ No se encontraron issues. Código limpio!"
         
-        # Group by priority
+        # Agrupar por prioridad
         grouped = {"critical": [], "important": [], "suggestion": [], "nitpick": []}
         for f in findings:
             priority = f.get("priority", "suggestion")
@@ -94,7 +94,7 @@ class TechLeadAgent(BaseAgent):
             output_parts.append(f"\n### {header}\n")
             
             for i, item in enumerate(items, 1):
-                line_info = f" (line {item['line']})" if item.get("line") else ""
+                line_info = f" (línea {item['line']})" if item.get("line") else ""
                 output_parts.append(f"{i}. **{item['description']}**{line_info}")
                 
                 if item.get("suggestion"):
@@ -107,14 +107,14 @@ def create_techlead_agent(
     llm: BaseChatModel,
     tools: list[BaseTool] | None = None,
 ) -> TechLeadAgent:
-    """Factory function to create TechLeadAgent with its tools.
+    """Factory function para crear el TechLeadAgent con sus herramientas.
     
     Args:
-        llm: Language model to use (preferably GPT-4)
-        tools: Additional tools (optional)
+        llm: Modelo de lenguaje a usar (preferiblemente GPT-4)
+        tools: Herramientas adicionales (opcional)
         
     Returns:
-        Configured TechLeadAgent instance
+        Instancia configurada del TechLeadAgent
     """
     from src.tools.github_mcp import create_github_tools
     from src.tools.code_sandbox import create_sandbox_tools

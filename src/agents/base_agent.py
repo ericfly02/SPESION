@@ -1,4 +1,4 @@
-"""Base Agent - Abstract base class for all SPESION agents."""
+"""Base Agent - Clase abstracta para todos los agentes de SPESION."""
 
 from __future__ import annotations
 
@@ -17,11 +17,10 @@ logger = logging.getLogger(__name__)
 
 
 class BaseAgent(ABC):
-    """Abstract base class for all SPESION agents.
+    """Clase base abstracta para todos los agentes de SPESION.
     
-    Each specialized agent must inherit from this class and implement
-    the abstract methods. The class handles tool binding gracefully,
-    falling back to plain LLM if tools are not supported.
+    Cada agente especializado debe heredar de esta clase e implementar
+    los métodos abstractos.
     """
     
     def __init__(
@@ -30,100 +29,84 @@ class BaseAgent(ABC):
         tools: list[BaseTool] | None = None,
         system_prompt: str | None = None,
     ) -> None:
-        """Initialize the agent.
+        """Inicializa el agente.
         
         Args:
-            llm: Language model to use
-            tools: List of available tools
-            system_prompt: System prompt for the agent
+            llm: Modelo de lenguaje a usar
+            tools: Lista de herramientas disponibles
+            system_prompt: Prompt del sistema para el agente
         """
         self.llm = llm
         self.tools = tools or []
         self._system_prompt = system_prompt
-        self._supports_tools = False
         
-        # Attempt to bind tools to LLM if available
+        # Bind tools al LLM si están disponibles
         if self.tools:
-            try:
-                self.llm_with_tools = llm.bind_tools(self.tools)
-                self._supports_tools = True
-                logger.debug(f"Successfully bound {len(self.tools)} tools to LLM")
-            except Exception as e:
-                # Model doesn't support tools - fall back to plain LLM
-                logger.warning(
-                    f"Model does not support tools, running without them: {e}"
-                )
-                self.llm_with_tools = llm
-                self._supports_tools = False
+            self.llm_with_tools = llm.bind_tools(self.tools)
         else:
             self.llm_with_tools = llm
     
     @property
     @abstractmethod
     def name(self) -> str:
-        """Unique name of the agent."""
+        """Nombre único del agente."""
         ...
     
     @property
     @abstractmethod
     def description(self) -> str:
-        """Brief description for the Supervisor router."""
+        """Descripción breve del agente para el Supervisor."""
         ...
     
     @property
     def system_prompt(self) -> str:
-        """System prompt for the agent."""
+        """Prompt del sistema del agente."""
         if self._system_prompt:
             return self._system_prompt
         return self._default_system_prompt()
     
     @abstractmethod
     def _default_system_prompt(self) -> str:
-        """Default system prompt if none is provided."""
+        """Prompt del sistema por defecto si no se proporciona uno."""
         ...
     
-    @property
-    def supports_tools(self) -> bool:
-        """Check if the current LLM supports tool calling."""
-        return self._supports_tools
-    
     def get_tools(self) -> list[BaseTool]:
-        """Return the available tools for this agent."""
-        return self.tools if self._supports_tools else []
+        """Retorna las herramientas disponibles para este agente."""
+        return self.tools
     
     def invoke(self, state: AgentState) -> AgentState:
-        """Invoke the agent with the current state.
+        """Invoca el agente con el estado actual.
         
-        This is the main method that the LangGraph will call.
+        Este es el método principal que el grafo LangGraph llamará.
         
         Args:
-            state: Current graph state
+            state: Estado actual del grafo
             
         Returns:
-            Updated state with the agent's response
+            Estado actualizado con la respuesta del agente
         """
-        logger.info(f"Agent {self.name} invoked")
+        logger.info(f"Agente {self.name} invocado")
         
         try:
-            # Build messages with context
+            # Construir mensajes con contexto
             messages = self._build_messages(state)
             
-            # Invoke LLM
+            # Invocar LLM
             response = self.llm_with_tools.invoke(messages)
             
-            # Process response
+            # Procesar respuesta
             state = self._process_response(state, response)
             
-            # Update sender
+            # Actualizar sender
             state["sender"] = self.name
             
-            logger.info(f"Agent {self.name} completed successfully")
+            logger.info(f"Agente {self.name} completado exitosamente")
             
         except Exception as e:
-            logger.error(f"Error in agent {self.name}: {e}")
-            # Add error message to state
+            logger.error(f"Error en agente {self.name}: {e}")
+            # Añadir mensaje de error al estado
             error_message = AIMessage(
-                content=f"Error in {self.name}: {str(e)}. Please try again.",
+                content=f"Error en {self.name}: {str(e)}. Por favor, intenta de nuevo.",
                 name=self.name,
             )
             state["messages"].append(error_message)
@@ -132,33 +115,25 @@ class BaseAgent(ABC):
         return state
     
     def _build_messages(self, state: AgentState) -> list:
-        """Build the message list for the LLM.
+        """Construye la lista de mensajes para el LLM.
         
         Args:
-            state: Current state
+            state: Estado actual
             
         Returns:
-            List of messages including system prompt and context
+            Lista de mensajes incluyendo system prompt y contexto
         """
         messages = [SystemMessage(content=self.system_prompt)]
         
-        # Add RAG context if available
+        # Añadir contexto RAG si existe
         if state.get("retrieved_context"):
             context = "\n\n".join(state["retrieved_context"])
             context_message = HumanMessage(
-                content=f"[Relevant context from memory]:\n{context}"
+                content=f"[Contexto relevante de la memoria]:\n{context}"
             )
             messages.append(context_message)
         
-        # Add tool availability notice if tools are disabled
-        if self.tools and not self._supports_tools:
-            notice = HumanMessage(
-                content="[System notice: Tools are not available with the current model. "
-                "Please provide direct answers based on your knowledge.]"
-            )
-            messages.append(notice)
-        
-        # Add message history (last N to not exceed context)
+        # Añadir historial de mensajes (últimos N para no exceder contexto)
         recent_messages = state.get("messages", [])[-10:]
         messages.extend(recent_messages)
         
@@ -169,23 +144,23 @@ class BaseAgent(ABC):
         state: AgentState, 
         response: AIMessage,
     ) -> AgentState:
-        """Process the LLM response.
+        """Procesa la respuesta del LLM.
         
         Args:
-            state: Current state
-            response: LLM response
+            state: Estado actual
+            response: Respuesta del LLM
             
         Returns:
-            Updated state
+            Estado actualizado
         """
-        # Add agent name to message
+        # Añadir nombre del agente al mensaje
         response.name = self.name
         
-        # Add response to history
+        # Añadir respuesta al historial
         state["messages"].append(response)
         
-        # Check for pending tool calls (only if tools are supported)
-        if self._supports_tools and hasattr(response, "tool_calls") and response.tool_calls:
+        # Verificar si hay tool calls pendientes
+        if hasattr(response, "tool_calls") and response.tool_calls:
             state["requires_tool_execution"] = True
             state["tool_results"] = None
         else:
@@ -194,27 +169,27 @@ class BaseAgent(ABC):
         return state
     
     async def ainvoke(self, state: AgentState) -> AgentState:
-        """Async version of invoke.
+        """Versión asíncrona de invoke.
         
         Args:
-            state: Current graph state
+            state: Estado actual del grafo
             
         Returns:
-            Updated state with the agent's response
+            Estado actualizado con la respuesta del agente
         """
-        logger.info(f"Agent {self.name} invoked (async)")
+        logger.info(f"Agente {self.name} invocado (async)")
         
         try:
             messages = self._build_messages(state)
             response = await self.llm_with_tools.ainvoke(messages)
             state = self._process_response(state, response)
             state["sender"] = self.name
-            logger.info(f"Agent {self.name} completed successfully (async)")
+            logger.info(f"Agente {self.name} completado exitosamente (async)")
             
         except Exception as e:
-            logger.error(f"Error in agent {self.name}: {e}")
+            logger.error(f"Error en agente {self.name}: {e}")
             error_message = AIMessage(
-                content=f"Error in {self.name}: {str(e)}. Please try again.",
+                content=f"Error en {self.name}: {str(e)}. Por favor, intenta de nuevo.",
                 name=self.name,
             )
             state["messages"].append(error_message)
@@ -223,5 +198,4 @@ class BaseAgent(ABC):
         return state
     
     def __repr__(self) -> str:
-        tools_info = f", tools={len(self.tools)}" if self.tools else ""
-        return f"{self.__class__.__name__}(name={self.name!r}{tools_info})"
+        return f"{self.__class__.__name__}(name={self.name!r})"

@@ -1,4 +1,4 @@
-"""Tycoon Agent - Personal finance and investments."""
+"""Tycoon Agent - Finanzas personales e inversiones."""
 
 from __future__ import annotations
 
@@ -18,29 +18,29 @@ logger = logging.getLogger(__name__)
 
 
 class TycoonAgent(BaseAgent):
-    """Tycoon Agent - Personal finance and investment expert.
+    """Agente Tycoon - Experto en finanzas personales e inversiones.
     
-    Responsibilities:
-    - Portfolio tracking (IBKR + Crypto)
-    - Allocation analysis (50% Core, 35% Thematic, 15% Crypto)
-    - Rebalancing suggestions
-    - Monthly DCA reminders
-    - Investment opportunity analysis
+    Responsabilidades:
+    - Tracking del portfolio (IBKR + Crypto)
+    - Análisis de asignación (50% Core, 35% Temático, 15% Crypto)
+    - Sugerencias de rebalanceo
+    - Recordatorios de DCA mensual
+    - Análisis de oportunidades de inversión
     
-    User's Strategy:
-    - Long-term (10+ year horizon)
-    - Monthly DCA €700-900
-    - No market timing
+    Estrategia del usuario:
+    - Long-term (horizonte 10+ años)
+    - DCA mensual 700-900€
+    - No timing del mercado
     """
     
-    # User's target allocation
+    # Targets de asignación del usuario
     TARGET_ALLOCATION = {
-        "core": 0.50,      # Global ETFs (VWCE, IWDA)
-        "thematic": 0.35,  # Tech, AI, semiconductors
-        "crypto": 0.15,    # BTC, ETH primarily
+        "core": 0.50,      # ETFs globales (VWCE, IWDA)
+        "thematic": 0.35,  # Tech, IA, semiconductores
+        "crypto": 0.15,    # BTC, ETH principalmente
     }
     
-    # Deviation tolerance before alerting
+    # Tolerancia de desviación antes de alertar
     REBALANCE_THRESHOLD = 0.05  # 5%
     
     @property
@@ -49,13 +49,13 @@ class TycoonAgent(BaseAgent):
     
     @property
     def description(self) -> str:
-        return "Portfolio management, investments, and personal finance expert"
+        return "Experto en portfolio management, inversiones y finanzas personales"
     
     def _default_system_prompt(self) -> str:
         return get_agent_prompt("tycoon")
     
     def invoke(self, state: AgentState) -> AgentState:
-        """Process financial requests."""
+        """Procesa solicitudes financieras."""
         state = super().invoke(state)
         return state
     
@@ -63,13 +63,13 @@ class TycoonAgent(BaseAgent):
         self,
         current_allocation: dict[str, float],
     ) -> dict[str, any]:
-        """Check portfolio allocation deviations.
+        """Verifica desviaciones en la asignación del portfolio.
         
         Args:
-            current_allocation: Dict with current allocation (core, thematic, crypto)
+            current_allocation: Dict con asignación actual (core, thematic, crypto)
             
         Returns:
-            Dict with deviation analysis and suggestions
+            Dict con análisis de desviaciones y sugerencias
         """
         deviations = {}
         suggestions = []
@@ -89,11 +89,11 @@ class TycoonAgent(BaseAgent):
                 needs_rebalance = True
                 if deviation > 0:
                     suggestions.append(
-                        f"Reduce {category} by {abs(deviation)*100:.1f}%"
+                        f"Reducir {category} en {abs(deviation)*100:.1f}%"
                     )
                 else:
                     suggestions.append(
-                        f"Increase {category} by {abs(deviation)*100:.1f}%"
+                        f"Aumentar {category} en {abs(deviation)*100:.1f}%"
                     )
         
         return {
@@ -107,35 +107,35 @@ class TycoonAgent(BaseAgent):
         monthly_amount: float,
         current_allocation: dict[str, float],
     ) -> dict[str, float]:
-        """Calculate how to distribute monthly contribution.
+        """Calcula cómo distribuir la aportación mensual.
         
-        Prioritizes underweight categories to maintain balance.
+        Prioriza las categorías infraponderadas para mantener el balance.
         
         Args:
-            monthly_amount: Amount to invest this month
-            current_allocation: Current allocation
+            monthly_amount: Cantidad a invertir este mes
+            current_allocation: Asignación actual
             
         Returns:
-            Dict with suggested amount per category
+            Dict con cantidad sugerida por categoría
         """
-        # Calculate deviations
+        # Calcular desviaciones
         deviations = {}
         for category, target in self.TARGET_ALLOCATION.items():
             current = current_allocation.get(category, target)
-            deviations[category] = target - current  # Positive if underweight
+            deviations[category] = target - current  # Positivo si infraponderado
         
-        # Normalize so they sum to 1 (only underweight categories)
+        # Normalizar para que sume 1 (solo categorías infraponderadas)
         positive_devs = {k: max(0, v) for k, v in deviations.items()}
         total_positive = sum(positive_devs.values())
         
         if total_positive == 0:
-            # No underweight, use normal targets
+            # No hay infraponderación, usar targets normales
             return {
                 category: monthly_amount * target
                 for category, target in self.TARGET_ALLOCATION.items()
             }
         
-        # Allocate proportionally to underweight
+        # Asignar proporcionalmente a la infraponderación
         allocation = {}
         for category, dev in positive_devs.items():
             if dev > 0:
@@ -150,14 +150,14 @@ def create_tycoon_agent(
     llm: BaseChatModel,
     tools: list[BaseTool] | None = None,
 ) -> TycoonAgent:
-    """Factory function to create TycoonAgent with its tools.
+    """Factory function para crear el TycoonAgent con sus herramientas.
     
     Args:
-        llm: Language model to use
-        tools: Additional tools (optional)
+        llm: Modelo de lenguaje a usar
+        tools: Herramientas adicionales (opcional)
         
     Returns:
-        Configured TycoonAgent instance
+        Instancia configurada del TycoonAgent
     """
     from src.tools.finance_tool import create_finance_tools
     

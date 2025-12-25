@@ -1,4 +1,4 @@
-"""Connector Agent - Networking and contact management."""
+"""Connector Agent - Networking y gestión de contactos."""
 
 from __future__ import annotations
 
@@ -18,27 +18,27 @@ logger = logging.getLogger(__name__)
 
 
 class ConnectorAgent(BaseAgent):
-    """Connector Agent - Networking and professional relationships expert.
+    """Agente Connector - Experto en networking y relaciones profesionales.
     
-    Responsibilities:
-    - Contact management for WhoHub (personal CRM)
-    - Event preparation for networking
-    - Personalized ice-breakers
-    - Negotiation simulation
-    - Strategic follow-ups
+    Responsabilidades:
+    - Gestión de contactos para WhoHub (CRM personal)
+    - Preparación para eventos de networking
+    - Ice-breakers personalizados
+    - Simulación de negociaciones
+    - Follow-ups estratégicos
     
-    Principles:
-    - Quality > Quantity
+    Principios:
+    - Calidad > Cantidad
     - Give first, ask later
-    - Authenticity > Performance
+    - Autenticidad > Performance
     """
     
-    # Connection strength levels
+    # Niveles de fuerza de conexión
     CONNECTION_STRENGTH = {
-        1: "Casual acquaintance",
-        2: "Professional contact",
-        3: "Active relationship",
-        4: "Trusted contact",
+        1: "Conocido casual",
+        2: "Contacto profesional",
+        3: "Relación activa",
+        4: "Contacto de confianza",
         5: "Inner circle",
     }
     
@@ -48,13 +48,13 @@ class ConnectorAgent(BaseAgent):
     
     @property
     def description(self) -> str:
-        return "Networking expert for contact management and event preparation"
+        return "Experto en networking, gestión de contactos y preparación para eventos"
     
     def _default_system_prompt(self) -> str:
         return get_agent_prompt("connector")
     
     def invoke(self, state: AgentState) -> AgentState:
-        """Process networking requests."""
+        """Procesa solicitudes de networking."""
         state = super().invoke(state)
         return state
     
@@ -66,20 +66,20 @@ class ConnectorAgent(BaseAgent):
         context: str,
         interests: list[str] | None = None,
     ) -> dict:
-        """Generate personalized ice-breakers for a contact.
+        """Genera ice-breakers personalizados para un contacto.
         
         Args:
-            target_name: Contact name
-            target_role: Role/title
-            target_company: Company
-            context: Meeting context (event, conference, etc.)
-            interests: Known contact interests
+            target_name: Nombre del contacto
+            target_role: Rol/cargo
+            target_company: Empresa
+            context: Contexto del encuentro (evento, conferencia, etc.)
+            interests: Intereses conocidos del contacto
             
         Returns:
-            Dict with ice-breakers and tips
+            Dict con ice-breakers y consejos
         """
-        # This function would be called by LLM as a tool
-        # or used internally to structure the response
+        # Esta función sería llamada por el LLM como herramienta
+        # o usada internamente para estructurar la respuesta
         
         return {
             "target": {
@@ -89,8 +89,8 @@ class ConnectorAgent(BaseAgent):
             },
             "context": context,
             "interests": interests or [],
-            "icebreakers": [],  # Filled by LLM
-            "avoid": [],        # Things to avoid
+            "icebreakers": [],  # Se llenan con el LLM
+            "avoid": [],        # Cosas a evitar
             "follow_up_suggestion": None,
         }
     
@@ -104,33 +104,33 @@ class ConnectorAgent(BaseAgent):
         strength: int = 2,
         notes: str | None = None,
     ) -> str:
-        """Format a contact card for display.
+        """Formatea una tarjeta de contacto para visualización.
         
         Args:
-            name: Contact name
-            role: Role/title
-            company: Company
-            how_met: How you met
-            last_interaction: Last interaction
-            strength: Connection strength (1-5)
-            notes: Additional notes
+            name: Nombre del contacto
+            role: Rol/cargo
+            company: Empresa
+            how_met: Cómo se conocieron
+            last_interaction: Última interacción
+            strength: Fuerza de conexión (1-5)
+            notes: Notas adicionales
             
         Returns:
-            Formatted string
+            String formateado
         """
-        strength_label = self.CONNECTION_STRENGTH.get(strength, "Unknown")
+        strength_label = self.CONNECTION_STRENGTH.get(strength, "Desconocido")
         stars = "⭐" * strength
         
         card = f"""
 📇 **{name}**
 {role} @ {company}
 
-🤝 How we met: {how_met}
-📅 Last interaction: {last_interaction or 'N/A'}
-💪 Strength: {stars} ({strength_label})
+🤝 Cómo nos conocimos: {how_met}
+📅 Última interacción: {last_interaction or 'N/A'}
+💪 Fuerza: {stars} ({strength_label})
 """
         if notes:
-            card += f"\n📝 Notes: {notes}"
+            card += f"\n📝 Notas: {notes}"
         
         return card.strip()
 
@@ -139,14 +139,14 @@ def create_connector_agent(
     llm: BaseChatModel,
     tools: list[BaseTool] | None = None,
 ) -> ConnectorAgent:
-    """Factory function to create ConnectorAgent with its tools.
+    """Factory function para crear el ConnectorAgent con sus herramientas.
     
     Args:
-        llm: Language model to use
-        tools: Additional tools (optional)
+        llm: Modelo de lenguaje a usar
+        tools: Herramientas adicionales (opcional)
         
     Returns:
-        Configured ConnectorAgent instance
+        Instancia configurada del ConnectorAgent
     """
     from src.tools.notion_mcp import create_notion_crm_tools
     from src.tools.search_tool import create_search_tools
