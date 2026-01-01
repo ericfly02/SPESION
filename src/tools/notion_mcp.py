@@ -433,6 +433,54 @@ def add_contact(
 
 
 # =============================================================================
+# HERRAMIENTAS DE SETUP
+# =============================================================================
+
+@tool
+def setup_notion_workspace() -> dict[str, Any]:
+    """Inicializa todo el workspace de Notion para SPESION.
+    
+    Crea la página 'SPESION HQ' y las bases de datos:
+    - Tasks & Projects
+    - Knowledge & Journal
+    - Network (CRM)
+    - Finance Portfolio
+    - Goals 2026
+    
+    Actualiza automáticamente el archivo .env con los nuevos IDs.
+    
+    Returns:
+        Dict con los IDs de las bases de datos creadas.
+    """
+    try:
+        from src.core.config import settings
+        from src.services.notion_setup import NotionSetupService
+        
+        if not settings.notion.api_key:
+            return {"error": "API Key de Notion no configurada en .env"}
+            
+        service = NotionSetupService(settings.notion.api_key.get_secret_value())
+        ids = service.initialize_workspace()
+        
+        # Actualizar configuración en memoria para uso inmediato
+        settings.notion.tasks_database_id = ids["tasks"]
+        settings.notion.knowledge_database_id = ids["knowledge"]
+        settings.notion.crm_database_id = ids["crm"]
+        settings.notion.finance_database_id = ids["finance"]
+        settings.notion.goals_database_id = ids["goals"]
+        
+        return {
+            "success": True, 
+            "message": "Workspace creado correctamente y configuración actualizada. Ya puedes usar las nuevas bases de datos.",
+            "database_ids": ids
+        }
+        
+    except Exception as e:
+        logger.error(f"Error en setup de Notion: {e}")
+        return {"error": str(e)}
+
+
+# =============================================================================
 # FACTORIES
 # =============================================================================
 
@@ -451,6 +499,11 @@ def create_notion_crm_tools() -> list:
     return [search_contacts, add_contact]
 
 
+def create_notion_setup_tools() -> list:
+    """Herramientas de Setup."""
+    return [setup_notion_workspace]
+
+
 def create_notion_tools() -> list:
     """Todas las herramientas de Notion."""
     return [
@@ -460,5 +513,6 @@ def create_notion_tools() -> list:
         create_journal_entry,
         search_contacts,
         add_contact,
+        setup_notion_workspace,
     ]
 

@@ -113,6 +113,14 @@ class NotionSettings(BaseSettings):
         default=None,
         description="ID de la base de datos de CRM/Finance",
     )
+    finance_database_id: str | None = Field(
+        default=None,
+        description="ID de la base de datos de Finance Portfolio",
+    )
+    goals_database_id: str | None = Field(
+        default=None,
+        description="ID de la base de datos de Goals 2026",
+    )
 
 
 class GarminSettings(BaseSettings):

@@ -178,7 +178,7 @@ class SentinelAgent(BaseAgent):
             factory = get_factory()
             status["services"]["ollama"] = {
                 "status": "ok" if factory.ollama_available else "error",
-                "model": "phi3:mini",
+                "model": "llama3.2:3b",
             }
         except Exception as e:
             status["services"]["ollama"] = {"status": "error", "error": str(e)}

@@ -203,6 +203,9 @@ def _create_agents() -> dict:
     from src.agents.connector import create_connector_agent
     from src.agents.executive import create_executive_agent
     from src.agents.sentinel import create_sentinel_agent
+
+    # Importar tools
+    from src.tools.notion_mcp import create_notion_setup_tools
     
     agents = {
         "scholar": create_scholar_agent(cloud_llm),
@@ -212,7 +215,7 @@ def _create_agents() -> dict:
         "techlead": create_techlead_agent(cloud_llm),
         "connector": create_connector_agent(cloud_llm),
         "executive": create_executive_agent(local_llm),
-        "sentinel": create_sentinel_agent(local_llm),  # Local por privacidad
+        "sentinel": create_sentinel_agent(local_llm, tools=create_notion_setup_tools()),  # Local por privacidad
     }
     
     logger.info(f"Creados {len(agents)} agentes")

@@ -641,6 +641,7 @@ Servicios a verificar periódicamente:
 - get_system_metrics: Métricas de uso del sistema
 - sanitize_text: Detectar y redactar PII
 - run_backup: Ejecutar backup manual
+- setup_notion_workspace: Inicializar y crear estructura de Notion (Bases de datos y páginas)
 """
 
 # =============================================================================
