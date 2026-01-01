@@ -20,9 +20,9 @@ def create_spesion_graph() -> CompiledStateGraph:
     
     El grafo tiene la siguiente estructura:
     
-    1. Entrada → Sentinel (sanitización PII)
-    2. Sentinel → Supervisor (routing)
-    3. Supervisor → Agente específico o END
+    1. Entrada (Guard) → Sanitización PII
+    2. Guard → Supervisor (routing)
+    3. Supervisor → Agente específico (incluido Sentinel como agente) o END
     4. Agente → Tools (opcional) → Agente
     5. Agente → Consolidación → END
     
@@ -42,10 +42,10 @@ def create_spesion_graph() -> CompiledStateGraph:
     # DEFINIR NODOS
     # ==========================================================================
     
-    # Nodo Sentinel (entrada - sanitización)
-    def sentinel_node(state: AgentState) -> AgentState:
+    # Nodo de Entrada (Sanitización)
+    def input_guard(state: AgentState) -> AgentState:
         """Nodo de entrada que sanitiza PII."""
-        logger.debug("Ejecutando nodo Sentinel")
+        logger.debug("Ejecutando nodo Guard (Sentinel PII check)")
         return agents["sentinel"].process_incoming(state)
     
     # Nodo Supervisor (router)
@@ -55,6 +55,11 @@ def create_spesion_graph() -> CompiledStateGraph:
         return supervisor.invoke(state)
     
     # Nodos de agentes
+    def sentinel_node(state: AgentState) -> AgentState:
+        """Nodo del agente Sentinel (Setup, Status, etc)."""
+        logger.debug("Ejecutando nodo Sentinel (Agente)")
+        return agents["sentinel"].invoke(state)
+
     def scholar_node(state: AgentState) -> AgentState:
         logger.debug("Ejecutando nodo Scholar")
         return agents["scholar"].invoke(state)
@@ -93,7 +98,6 @@ def create_spesion_graph() -> CompiledStateGraph:
             return state
 
         agent = agents[sender_name]
-        # Asegurar que obtenemos las herramientas correctamente
         tools_list = agent.get_tools() if hasattr(agent, "get_tools") else agent.tools
         tools_map = {t.name: t for t in tools_list}
         
@@ -137,15 +141,12 @@ def create_spesion_graph() -> CompiledStateGraph:
                     status="error"
                 ))
         
-        # Añadir resultados al historial
-        # LangGraph espera que retornemos el update del estado
         return {"messages": results, "requires_tool_execution": False}
 
     # Nodo de consolidación post-agente
     def consolidate_node(state: AgentState) -> AgentState:
         """Consolida la respuesta del agente."""
         logger.debug("Ejecutando nodo de consolidación")
-        # Marcar que no hay siguiente agente (terminar)
         state["next_agent"] = None
         return state
     
@@ -153,8 +154,11 @@ def create_spesion_graph() -> CompiledStateGraph:
     # AÑADIR NODOS AL GRAFO
     # ==========================================================================
     
-    graph.add_node("sentinel", sentinel_node)
+    graph.add_node("guard", input_guard)  # Entry point (Sanitización)
     graph.add_node("supervisor", supervisor_node)
+    
+    # Agentes
+    graph.add_node("sentinel", sentinel_node)  # Action node
     graph.add_node("scholar", scholar_node)
     graph.add_node("coach", coach_node)
     graph.add_node("tycoon", tycoon_node)
@@ -162,6 +166,7 @@ def create_spesion_graph() -> CompiledStateGraph:
     graph.add_node("techlead", techlead_node)
     graph.add_node("connector", connector_node)
     graph.add_node("executive", executive_node)
+    
     graph.add_node("tools", tools_node)
     graph.add_node("consolidate", consolidate_node)
     
@@ -169,15 +174,15 @@ def create_spesion_graph() -> CompiledStateGraph:
     # DEFINIR ARISTAS
     # ==========================================================================
     
-    # Entrada siempre va a Sentinel
-    graph.set_entry_point("sentinel")
+    # Entrada siempre va a Guard
+    graph.set_entry_point("guard")
     
-    # Sentinel siempre va a Supervisor
-    graph.add_edge("sentinel", "supervisor")
+    # Guard siempre va a Supervisor
+    graph.add_edge("guard", "supervisor")
     
     # Router condicional del Supervisor
     def route_from_supervisor(state: AgentState) -> Literal[
-        "scholar", "coach", "tycoon", "companion",
+        "sentinel", "scholar", "coach", "tycoon", "companion",
         "techlead", "connector", "executive", "end"
     ]:
         """Determina el siguiente nodo basado en next_agent."""
@@ -187,7 +192,7 @@ def create_spesion_graph() -> CompiledStateGraph:
             return "end"
         
         valid_agents = {
-            "scholar", "coach", "tycoon", "companion",
+            "sentinel", "scholar", "coach", "tycoon", "companion",
             "techlead", "connector", "executive",
         }
         
@@ -201,6 +206,7 @@ def create_spesion_graph() -> CompiledStateGraph:
         "supervisor",
         route_from_supervisor,
         {
+            "sentinel": "sentinel",
             "scholar": "scholar",
             "coach": "coach",
             "tycoon": "tycoon",
@@ -218,16 +224,13 @@ def create_spesion_graph() -> CompiledStateGraph:
             return "tools"
         return "consolidate"
 
-    # Definir edges para cada agente
+    # Definir edges para TODOS los agentes
     agent_names = [
-        "scholar", "coach", "tycoon", "companion", 
-        "techlead", "connector", "executive", "sentinel"
+        "sentinel", "scholar", "coach", "tycoon", "companion", 
+        "techlead", "connector", "executive"
     ]
     
     for agent in agent_names:
-        if agent == "sentinel":
-             continue
-             
         graph.add_conditional_edges(
             agent,
             route_from_agent,
@@ -237,16 +240,14 @@ def create_spesion_graph() -> CompiledStateGraph:
             }
         )
     
-    # El nodo tools debe volver al agente que lo llamó para que genere la respuesta final
+    # El nodo tools debe volver al agente que lo llamó
     def route_from_tools(state: AgentState) -> str:
         sender = state.get("sender")
         if sender and sender in agent_names:
             return sender
         return "consolidate"
 
-    # Edge condicional desde tools
-    # Necesitamos el mapping explícito para que LangGraph pueda compilar el grafo estático
-    # Mapeamos todos los agentes posibles
+    # Mapping para tools -> agentes
     tool_destinations = {name: name for name in agent_names}
     tool_destinations["consolidate"] = "consolidate"
     
@@ -371,12 +372,10 @@ class SpesionAssistant:
             # Extraer respuesta
             if result.get("messages"):
                 # Buscar el último mensaje con contenido real
-                # Esto es crucial si el último mensaje fue un ToolMessage o un AIMessage vacío
                 for msg in reversed(result["messages"]):
                     if hasattr(msg, "content") and msg.content and isinstance(msg.content, str):
                         return msg.content
                 
-                # Si no encontramos nada, devolver el último por defecto
                 last = result["messages"][-1]
                 return str(last.content) if hasattr(last, "content") else "..."
             
