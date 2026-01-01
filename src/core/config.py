@@ -30,9 +30,15 @@ class LLMSettings(BaseSettings):
         description="Modelo ligero para tareas simples/privadas",
     )
     ollama_model_heavy: str = Field(
+        default="minimax-m2.1:cloud",
+        description="Modelo más potente para tareas complejas locales",
+    )    
+    """
+    ollama_model_heavy: str = Field(
         default="llama3.1:8b",
         description="Modelo más potente para tareas complejas locales",
     )
+    """
     
     # OpenAI
     openai_api_key: SecretStr | None = Field(
