@@ -71,8 +71,9 @@ class NotionSetupService:
         search_all = self.client.search(filter={"property": "object", "value": "page"})
         if not search_all["results"]:
             raise ValueError(
-                "No pages found shared with the integration. "
-                "Please create a page in Notion, name it 'Workspace', and share it with SPESION."
+                "Error de Permisos Notion: No encuentro ninguna página compartida con la integración.\n"
+                "SOLUCIÓN: Ve a Notion, abre una página, haz clic en '...' > 'Conexiones' "
+                "y añade la conexión de tu integración (SPESION)."
             )
         
         parent_page = search_all["results"][0]
