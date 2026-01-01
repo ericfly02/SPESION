@@ -79,7 +79,7 @@ class NotionSetupService:
         parent_page = search_all["results"][0]
         
         return self.client.pages.create(
-            parent={"page_id": parent_page["id"]},
+            parent={"type": "page_id", "page_id": parent_page["id"]},
             properties={
                 "title": [{"text": {"content": "SPESION HQ"}}],
             },
@@ -96,7 +96,7 @@ class NotionSetupService:
     def _create_knowledge_db(self, parent_id: str) -> str:
         """Creates Knowledge/Journal DB."""
         db = self.client.databases.create(
-            parent={"page_id": parent_id},
+            parent={"type": "page_id", "page_id": parent_id},
             title=[{"type": "text", "text": {"content": "🧠 Knowledge & Journal"}}],
             properties={
                 "Name": {"title": {}},
@@ -135,7 +135,7 @@ class NotionSetupService:
     def _create_tasks_db(self, parent_id: str) -> str:
         """Creates Tasks DB."""
         db = self.client.databases.create(
-            parent={"page_id": parent_id},
+            parent={"type": "page_id", "page_id": parent_id},
             title=[{"type": "text", "text": {"content": "✅ Tasks & Projects"}}],
             properties={
                 "Name": {"title": {}},
@@ -185,7 +185,7 @@ class NotionSetupService:
     def _create_crm_db(self, parent_id: str) -> str:
         """Creates Network/CRM DB."""
         db = self.client.databases.create(
-            parent={"page_id": parent_id},
+            parent={"type": "page_id", "page_id": parent_id},
             title=[{"type": "text", "text": {"content": "🤝 Network (WhoHub)"}}],
             properties={
                 "Name": {"title": {}},
@@ -213,7 +213,7 @@ class NotionSetupService:
     def _create_finance_db(self, parent_id: str) -> str:
         """Creates Finance Portfolio DB."""
         db = self.client.databases.create(
-            parent={"page_id": parent_id},
+            parent={"type": "page_id", "page_id": parent_id},
             title=[{"type": "text", "text": {"content": "💰 Finance Portfolio"}}],
             properties={
                 "Ticker": {"title": {}}, # Using Name as Ticker
@@ -248,7 +248,7 @@ class NotionSetupService:
     def _create_goals_db(self, parent_id: str) -> str:
         """Creates Goals 2026 DB."""
         db = self.client.databases.create(
-            parent={"page_id": parent_id},
+            parent={"type": "page_id", "page_id": parent_id},
             title=[{"type": "text", "text": {"content": "🎯 Goals 2026"}}],
             properties={
                 "Goal": {"title": {}},
