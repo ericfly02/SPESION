@@ -175,10 +175,11 @@ class SentinelAgent(BaseAgent):
         # Verificar Ollama
         try:
             from src.services.llm_factory import get_factory
+            from src.core.config import settings
             factory = get_factory()
             status["services"]["ollama"] = {
                 "status": "ok" if factory.ollama_available else "error",
-                "model": "llama3.2:3b",
+                "model": settings.llm.ollama_model_light,
             }
         except Exception as e:
             status["services"]["ollama"] = {"status": "error", "error": str(e)}

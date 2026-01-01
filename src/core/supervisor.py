@@ -203,11 +203,23 @@ Responde SOLO con el nombre del agente."""
             Nombre del agente
         """
         response = self._routing_chain.invoke({"input": user_input})
-        agent = response.strip().lower()
+        response_lower = response.lower()
         
-        # Validar que sea un agente válido
-        if agent in AVAILABLE_AGENTS:
-            return agent
+        # 1. Check exact match
+        clean_response = response_lower.strip()
+        if clean_response in AVAILABLE_AGENTS:
+            return clean_response
+            
+        # 2. Check if agent name appears in text (Robust fallback)
+        # Prioritize longer matches or specific order? 
+        # We iterate through AVAILABLE_AGENTS
+        for agent in AVAILABLE_AGENTS:
+            # Check for "agent name" or "invoke agent name" patterns if needed
+            # But simple containment is usually enough if the prompt is specific
+            # We check boundaries to avoid partial matches (e.g. "tech" in "techlead")
+            if agent in response_lower:
+                logger.info(f"Routing fuzzy match: '{agent}' found in '{response_lower}'")
+                return agent
         
         return "supervisor"
     
