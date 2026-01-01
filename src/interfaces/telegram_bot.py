@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from telegram import Update
+from telegram.error import TelegramError
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -71,8 +72,29 @@ class SpesionBot:
     
     async def _send_typing(self, update: Update) -> None:
         """Envía indicador de 'escribiendo...'."""
-        await update.effective_chat.send_chat_action("typing")
-    
+        if update.effective_chat:
+            await update.effective_chat.send_chat_action("typing")
+
+    async def _reply_safe(self, update: Update, text: str) -> None:
+        """Envía un mensaje intentando Markdown primero, y cayendo a texto plano si falla.
+        
+        Esto evita crashes por 'Can't parse entities' cuando el LLM genera Markdown inválido.
+        """
+        if not text:
+            return
+
+        try:
+            # Intentar con Markdown primero para formato bonito
+            await update.message.reply_text(text, parse_mode="Markdown")
+        except TelegramError as e:
+            logger.warning(f"Error enviando Markdown: {e}. Reintentando como texto plano.")
+            try:
+                # Fallback a texto plano
+                await update.message.reply_text(text, parse_mode=None)
+            except Exception as e2:
+                logger.error(f"Error crítico enviando mensaje: {e2}")
+                await update.message.reply_text("Error enviando la respuesta.")
+
     # =========================================================================
     # HANDLERS DE COMANDOS
     # =========================================================================
@@ -102,10 +124,7 @@ Puedo ayudarte con:
 
 O simplemente escríbeme lo que necesites."""
         
-        await update.message.reply_text(
-            welcome_message,
-            parse_mode="Markdown",
-        )
+        await self._reply_safe(update, welcome_message)
     
     async def help_command(
         self,
@@ -145,7 +164,7 @@ O simplemente escríbeme lo que necesites."""
 🎤 Puedes enviarme notas de voz
 🔒 Tus datos sensibles se procesan localmente"""
         
-        await update.message.reply_text(help_text, parse_mode="Markdown")
+        await self._reply_safe(update, help_text)
     
     async def resumen_command(
         self,
@@ -164,7 +183,7 @@ O simplemente escríbeme lo que necesites."""
             telegram_chat_id=update.effective_chat.id,
         )
         
-        await update.message.reply_text(response, parse_mode="Markdown")
+        await self._reply_safe(update, response)
     
     async def entreno_command(
         self,
@@ -183,7 +202,7 @@ O simplemente escríbeme lo que necesites."""
             telegram_chat_id=update.effective_chat.id,
         )
         
-        await update.message.reply_text(response, parse_mode="Markdown")
+        await self._reply_safe(update, response)
     
     async def finance_command(
         self,
@@ -202,7 +221,7 @@ O simplemente escríbeme lo que necesites."""
             telegram_chat_id=update.effective_chat.id,
         )
         
-        await update.message.reply_text(response, parse_mode="Markdown")
+        await self._reply_safe(update, response)
     
     async def journal_command(
         self,
@@ -221,7 +240,7 @@ O simplemente escríbeme lo que necesites."""
             telegram_chat_id=update.effective_chat.id,
         )
         
-        await update.message.reply_text(response, parse_mode="Markdown")
+        await self._reply_safe(update, response)
     
     async def agenda_command(
         self,
@@ -240,7 +259,7 @@ O simplemente escríbeme lo que necesites."""
             telegram_chat_id=update.effective_chat.id,
         )
         
-        await update.message.reply_text(response, parse_mode="Markdown")
+        await self._reply_safe(update, response)
     
     async def audit_command(
         self,
@@ -271,7 +290,7 @@ O simplemente escríbeme lo que necesites."""
             telegram_chat_id=update.effective_chat.id,
         )
         
-        await update.message.reply_text(response, parse_mode="Markdown")
+        await self._reply_safe(update, response)
     
     async def status_command(
         self,
@@ -290,7 +309,7 @@ O simplemente escríbeme lo que necesites."""
             telegram_chat_id=update.effective_chat.id,
         )
         
-        await update.message.reply_text(response, parse_mode="Markdown")
+        await self._reply_safe(update, response)
     
     # =========================================================================
     # HANDLERS DE MENSAJES
@@ -317,9 +336,9 @@ O simplemente escríbeme lo que necesites."""
         if len(response) > 4000:
             chunks = [response[i:i+4000] for i in range(0, len(response), 4000)]
             for chunk in chunks:
-                await update.message.reply_text(chunk, parse_mode="Markdown")
+                await self._reply_safe(update, chunk)
         else:
-            await update.message.reply_text(response, parse_mode="Markdown")
+            await self._reply_safe(update, response)
     
     async def handle_voice_message(
         self,
@@ -360,7 +379,7 @@ O simplemente escríbeme lo que necesites."""
                 return
             
             # Mostrar transcripción
-            await update.message.reply_text(f"📝 Transcripción: _{text}_", parse_mode="Markdown")
+            await self._reply_safe(update, f"📝 Transcripción: _{text}_")
             
             # Procesar con el asistente
             await self._send_typing(update)
@@ -372,7 +391,7 @@ O simplemente escríbeme lo que necesites."""
                 is_voice=True,
             )
             
-            await update.message.reply_text(response, parse_mode="Markdown")
+            await self._reply_safe(update, response)
             
         except Exception as e:
             logger.error(f"Error procesando nota de voz: {e}")
@@ -458,4 +477,3 @@ def run_bot() -> None:
     """Función de conveniencia para ejecutar el bot."""
     bot = SpesionBot()
     bot.run()
-

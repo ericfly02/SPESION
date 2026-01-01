@@ -185,6 +185,10 @@ Responde SOLO con el nombre del agente."""
             "todo": "executive",
             "status": "sentinel",
             "backup": "sentinel",
+            "sentinel": "sentinel",
+            "notion": "sentinel",
+            "setup": "sentinel",
+            "inicializa": "sentinel",
         }
         
         for keyword, agent in specific_keywords.items():
