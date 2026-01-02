@@ -449,7 +449,7 @@ O simplemente escríbeme lo que necesites."""
         if app.job_queue:
             app.job_queue.run_daily(
                 self.send_scholar_daily_summary,
-                time=datetime.time(hour=10, minute=0, tzinfo=None), # 10:00 AM local
+                time=time(hour=10, minute=0), # 10:00 AM local
                 days=(0, 1, 2, 3, 4, 5, 6),
                 name="scholar_daily"
             )
