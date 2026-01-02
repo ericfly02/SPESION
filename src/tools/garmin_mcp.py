@@ -144,7 +144,8 @@ def get_garmin_activities(
         return [{"error": "Garmin no disponible"}]
     
     try:
-        activities = client.get_activities(0, days * 3)  # Pedir más para filtrar
+        limit = max(1, days * 3)  # Asegurar límite positivo
+        activities = client.get_activities(0, limit)
         
         results = []
         cutoff = datetime.now() - timedelta(days=days)

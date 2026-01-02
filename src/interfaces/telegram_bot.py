@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -444,9 +445,50 @@ O simplemente escríbeme lo que necesites."""
         # Handler de errores
         app.add_error_handler(self.handle_error)
         
+        # JobQueue para tareas programadas (Scholar daily)
+        if app.job_queue:
+            app.job_queue.run_daily(
+                self.send_scholar_daily_summary,
+                time=datetime.time(hour=10, minute=0, tzinfo=None), # 10:00 AM local
+                days=(0, 1, 2, 3, 4, 5, 6),
+                name="scholar_daily"
+            )
+        
         self._app = app
         return app
-    
+
+    async def send_scholar_daily_summary(self, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Envía el resumen diario de Scholar."""
+        # Obtener chat_id (asumimos el primer usuario permitido o guardado)
+        # Por ahora usaremos self.allowed_users si existe
+        if not self.allowed_users:
+            logger.warning("No hay usuarios configurados para el resumen diario.")
+            return
+
+        target_chat_id = self.allowed_users[0] # Enviar al primer usuario (Eric)
+        
+        logger.info(f"Ejecutando resumen diario de Scholar para {target_chat_id}")
+        
+        try:
+            # Invocar al Scholar directamente
+            response = await self.assistant.achat(
+                message="Genera mi resumen diario de papers ArXiv y noticias tech importantes de hoy.",
+                user_id=str(target_chat_id),
+                telegram_chat_id=target_chat_id,
+            )
+            
+            await context.bot.send_message(
+                chat_id=target_chat_id,
+                text=f"🎓 **Scholar Daily Briefing**\n\n{response}",
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            logger.error(f"Error en resumen diario Scholar: {e}")
+            await context.bot.send_message(
+                chat_id=target_chat_id,
+                text="Error generando el resumen diario."
+            )
+
     def run(self) -> None:
         """Ejecuta el bot en modo polling."""
         logger.info("Iniciando SPESION Telegram Bot...")

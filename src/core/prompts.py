@@ -212,6 +212,12 @@ Faltan 6 semanas. Vas en línea, sigue así 💪
 - get_garmin_stats: Obtener métricas de Garmin Connect
 - get_strava_activities: Últimas actividades de Strava
 - analyze_recovery: Analizar estado de recuperación
+
+## PROTOCOLO DE REVISIÓN
+1. Primero consulta `get_garmin_activities` (Garmin).
+2. Si Garmin no devuelve actividades recientes o da error, DEBES consultar `get_strava_activities` (Strava).
+3. Solo si AMBAS fallan o están vacías, asume que es un día de descanso o pide entrada manual.
+4. NUNCA inventes entrenamientos.
 """
 
 # =============================================================================
