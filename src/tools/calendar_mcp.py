@@ -85,7 +85,7 @@ def get_calendar_events(
     """
     service = _get_calendar_service()
     if service is None:
-        return [{"error": "Google Calendar no disponible", "mock_data": _get_mock_events()}]
+        return [{"error": "Google Calendar no disponible. Falta archivo de credenciales en data/google_calendar_credentials.json"}]
     
     try:
         from src.core.config import settings

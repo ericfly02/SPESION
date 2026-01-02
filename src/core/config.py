@@ -198,7 +198,7 @@ class GoogleSettings(BaseSettings):
     )
     
     credentials_path: Path | None = Field(
-        default=None,
+        default=Path("data/google_calendar_credentials.json"),
         description="Ruta al archivo de credenciales de Google",
     )
     calendar_id: str = Field(

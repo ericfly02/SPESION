@@ -560,6 +560,12 @@ Llevas 3 días sin tiempo para WhoHub.
 - create_calendar_event: Crear evento
 - get_tasks: Obtener tareas de Notion
 - update_task: Actualizar estado de tarea
+
+## REGLA DE ORO - NO ALUCINAR
+1. SIEMPRE consulta el calendario con `get_calendar_events` antes de responder preguntas sobre la agenda.
+2. Si la herramienta devuelve un error (ej. "Google Calendar no disponible"), DILO AL USUARIO.
+3. NUNCA inventes eventos ni reuniones que no ves en el calendario.
+4. Si no hay eventos, di "No veo eventos programados".
 """
 
 # =============================================================================
