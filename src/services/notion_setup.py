@@ -97,39 +97,44 @@ class NotionSetupService:
     def _create_knowledge_db(self, parent_id: str) -> str:
         """Creates Knowledge/Journal DB."""
         try:
+            # Updated for new Notion API (Data Sources)
             db = self.client.databases.create(
                 parent={"type": "page_id", "page_id": parent_id},
                 title=[{"type": "text", "text": {"content": "🧠 Knowledge & Journal"}}],
-                properties={
-                    "Name": {"title": {}},
-                    "Type": {
-                        "select": {
-                            "options": [
-                                {"name": "Journal", "color": "blue"},
-                                {"name": "Paper", "color": "red"},
-                                {"name": "Note", "color": "gray"},
-                                {"name": "Insight", "color": "yellow"},
-                            ]
-                        }
-                    },
-                    "Date": {"date": {}},
-                    "Tags": {"multi_select": {}},
-                    "Mood": {
-                        "select": {
-                            "options": [
-                                {"name": "Great", "color": "green"},
-                                {"name": "Good", "color": "blue"},
-                                {"name": "Okay", "color": "gray"},
-                                {"name": "Bad", "color": "orange"},
-                                {"name": "Terrible", "color": "red"},
-                            ]
-                        }
-                    },
-                    "Energy": {"number": {"format": "number"}},
-                    "URL": {"url": {}},
-                    "ArXiv ID": {"rich_text": {}},
-                    "Authors": {"rich_text": {}},
-                    "Summary": {"rich_text": {}},
+                initial_data_source={
+                    "properties": {
+                        "Name": {"type": "title", "title": {}},
+                        "Type": {
+                            "type": "select",
+                            "select": {
+                                "options": [
+                                    {"name": "Journal", "color": "blue"},
+                                    {"name": "Paper", "color": "red"},
+                                    {"name": "Note", "color": "gray"},
+                                    {"name": "Insight", "color": "yellow"},
+                                ]
+                            }
+                        },
+                        "Date": {"type": "date", "date": {}},
+                        "Tags": {"type": "multi_select", "multi_select": {}},
+                        "Mood": {
+                            "type": "select",
+                            "select": {
+                                "options": [
+                                    {"name": "Great", "color": "green"},
+                                    {"name": "Good", "color": "blue"},
+                                    {"name": "Okay", "color": "gray"},
+                                    {"name": "Bad", "color": "orange"},
+                                    {"name": "Terrible", "color": "red"},
+                                ]
+                            }
+                        },
+                        "Energy": {"type": "number", "number": {"format": "number"}},
+                        "URL": {"type": "url", "url": {}},
+                        "ArXiv ID": {"type": "rich_text", "rich_text": {}},
+                        "Authors": {"type": "rich_text", "rich_text": {}},
+                        "Summary": {"type": "rich_text", "rich_text": {}},
+                    }
                 }
             )
             return db["id"]
@@ -143,39 +148,44 @@ class NotionSetupService:
             db = self.client.databases.create(
                 parent={"type": "page_id", "page_id": parent_id},
                 title=[{"type": "text", "text": {"content": "✅ Tasks & Projects"}}],
-                properties={
-                    "Name": {"title": {}},
-                    "Status": {"status": {}}, # Using default status options to avoid API errors
-                    "Priority": {
-                        "select": {
-                            "options": [
-                                {"name": "High", "color": "red"},
-                                {"name": "Medium", "color": "yellow"},
-                                {"name": "Low", "color": "blue"},
-                            ]
-                        }
-                    },
-                    "Due Date": {"date": {}},
-                    "Project": {
-                        "select": {
-                            "options": [
-                                {"name": "Civita", "color": "purple"},
-                                {"name": "Creda", "color": "green"},
-                                {"name": "WhoHub", "color": "orange"},
-                                {"name": "Personal", "color": "gray"},
-                                {"name": "NTTData", "color": "blue"},
-                            ]
-                        }
-                    },
-                    "Cognitive Load": {
-                        "select": {
-                            "options": [
-                                {"name": "High (Deep Work)", "color": "red"},
-                                {"name": "Medium", "color": "yellow"},
-                                {"name": "Low (Admin)", "color": "blue"},
-                            ]
-                        }
-                    },
+                initial_data_source={
+                    "properties": {
+                        "Name": {"type": "title", "title": {}},
+                        "Status": {"type": "status", "status": {}}, 
+                        "Priority": {
+                            "type": "select",
+                            "select": {
+                                "options": [
+                                    {"name": "High", "color": "red"},
+                                    {"name": "Medium", "color": "yellow"},
+                                    {"name": "Low", "color": "blue"},
+                                ]
+                            }
+                        },
+                        "Due Date": {"type": "date", "date": {}},
+                        "Project": {
+                            "type": "select",
+                            "select": {
+                                "options": [
+                                    {"name": "Civita", "color": "purple"},
+                                    {"name": "Creda", "color": "green"},
+                                    {"name": "WhoHub", "color": "orange"},
+                                    {"name": "Personal", "color": "gray"},
+                                    {"name": "NTTData", "color": "blue"},
+                                ]
+                            }
+                        },
+                        "Cognitive Load": {
+                            "type": "select",
+                            "select": {
+                                "options": [
+                                    {"name": "High (Deep Work)", "color": "red"},
+                                    {"name": "Medium", "color": "yellow"},
+                                    {"name": "Low (Admin)", "color": "blue"},
+                                ]
+                            }
+                        },
+                    }
                 }
             )
             return db["id"]
@@ -189,25 +199,28 @@ class NotionSetupService:
             db = self.client.databases.create(
                 parent={"type": "page_id", "page_id": parent_id},
                 title=[{"type": "text", "text": {"content": "🤝 Network (WhoHub)"}}],
-                properties={
-                    "Name": {"title": {}},
-                    "Company": {"rich_text": {}},
-                    "Role": {"rich_text": {}},
-                    "Strength": {
-                        "select": {
-                            "options": [
-                                {"name": "⭐⭐⭐⭐⭐ Inner Circle", "color": "green"},
-                                {"name": "⭐⭐⭐⭐ Trusted", "color": "blue"},
-                                {"name": "⭐⭐⭐ Active", "color": "yellow"},
-                                {"name": "⭐⭐ Professional", "color": "gray"},
-                                {"name": "⭐ Acquaintance", "color": "default"},
-                            ]
-                        }
-                    },
-                    "Last Contact": {"date": {}},
-                    "How Met": {"rich_text": {}},
-                    "Tags": {"multi_select": {}},
-                    "LinkedIn": {"url": {}},
+                initial_data_source={
+                    "properties": {
+                        "Name": {"type": "title", "title": {}},
+                        "Company": {"type": "rich_text", "rich_text": {}},
+                        "Role": {"type": "rich_text", "rich_text": {}},
+                        "Strength": {
+                            "type": "select",
+                            "select": {
+                                "options": [
+                                    {"name": "⭐⭐⭐⭐⭐ Inner Circle", "color": "green"},
+                                    {"name": "⭐⭐⭐⭐ Trusted", "color": "blue"},
+                                    {"name": "⭐⭐⭐ Active", "color": "yellow"},
+                                    {"name": "⭐⭐ Professional", "color": "gray"},
+                                    {"name": "⭐ Acquaintance", "color": "default"},
+                                ]
+                            }
+                        },
+                        "Last Contact": {"type": "date", "date": {}},
+                        "How Met": {"type": "rich_text", "rich_text": {}},
+                        "Tags": {"type": "multi_select", "multi_select": {}},
+                        "LinkedIn": {"type": "url", "url": {}},
+                    }
                 }
             )
             return db["id"]
@@ -221,32 +234,36 @@ class NotionSetupService:
             db = self.client.databases.create(
                 parent={"type": "page_id", "page_id": parent_id},
                 title=[{"type": "text", "text": {"content": "💰 Finance Portfolio"}}],
-                properties={
-                    "Ticker": {"title": {}},
-                    "Type": {
-                        "select": {
-                            "options": [
-                                {"name": "ETF", "color": "blue"},
-                                {"name": "Stock", "color": "green"},
-                                {"name": "Crypto", "color": "orange"},
-                                {"name": "Cash", "color": "gray"},
-                            ]
-                        }
-                    },
-                    "Category": {
-                        "select": {
-                            "options": [
-                                {"name": "Core", "color": "blue"},
-                                {"name": "Thematic", "color": "purple"},
-                                {"name": "Speculative", "color": "red"},
-                            ]
-                        }
-                    },
-                    "Amount": {"number": {"format": "euro"}},
-                    "Quantity": {"number": {"format": "number"}},
-                    "Avg Price": {"number": {"format": "euro"}},
-                    "Current Price": {"number": {"format": "euro"}},
-                    "Last Updated": {"date": {}},
+                initial_data_source={
+                    "properties": {
+                        "Ticker": {"type": "title", "title": {}},
+                        "Type": {
+                            "type": "select",
+                            "select": {
+                                "options": [
+                                    {"name": "ETF", "color": "blue"},
+                                    {"name": "Stock", "color": "green"},
+                                    {"name": "Crypto", "color": "orange"},
+                                    {"name": "Cash", "color": "gray"},
+                                ]
+                            }
+                        },
+                        "Category": {
+                            "type": "select",
+                            "select": {
+                                "options": [
+                                    {"name": "Core", "color": "blue"},
+                                    {"name": "Thematic", "color": "purple"},
+                                    {"name": "Speculative", "color": "red"},
+                                ]
+                            }
+                        },
+                        "Amount": {"type": "number", "number": {"format": "euro"}},
+                        "Quantity": {"type": "number", "number": {"format": "number"}},
+                        "Avg Price": {"type": "number", "number": {"format": "euro"}},
+                        "Current Price": {"type": "number", "number": {"format": "euro"}},
+                        "Last Updated": {"type": "date", "date": {}},
+                    }
                 }
             )
             return db["id"]
@@ -260,31 +277,35 @@ class NotionSetupService:
             db = self.client.databases.create(
                 parent={"type": "page_id", "page_id": parent_id},
                 title=[{"type": "text", "text": {"content": "🎯 Goals 2026"}}],
-                properties={
-                    "Goal": {"title": {}},
-                    "Status": {"status": {}}, # Using default status options
-                    "Quarter": {
-                        "select": {
-                            "options": [
-                                {"name": "Q1", "color": "blue"},
-                                {"name": "Q2", "color": "green"},
-                                {"name": "Q3", "color": "yellow"},
-                                {"name": "Q4", "color": "orange"},
-                                {"name": "Year", "color": "purple"},
-                            ]
-                        }
-                    },
-                    "Progress": {"number": {"format": "percent"}},
-                    "Area": {
-                        "select": {
-                            "options": [
-                                {"name": "Career", "color": "blue"},
-                                {"name": "Health", "color": "green"},
-                                {"name": "Finance", "color": "yellow"},
-                                {"name": "Personal", "color": "pink"},
-                            ]
-                        }
-                    },
+                initial_data_source={
+                    "properties": {
+                        "Goal": {"type": "title", "title": {}},
+                        "Status": {"type": "status", "status": {}}, 
+                        "Quarter": {
+                            "type": "select",
+                            "select": {
+                                "options": [
+                                    {"name": "Q1", "color": "blue"},
+                                    {"name": "Q2", "color": "green"},
+                                    {"name": "Q3", "color": "yellow"},
+                                    {"name": "Q4", "color": "orange"},
+                                    {"name": "Year", "color": "purple"},
+                                ]
+                            }
+                        },
+                        "Progress": {"type": "number", "number": {"format": "percent"}},
+                        "Area": {
+                            "type": "select",
+                            "select": {
+                                "options": [
+                                    {"name": "Career", "color": "blue"},
+                                    {"name": "Health", "color": "green"},
+                                    {"name": "Finance", "color": "yellow"},
+                                    {"name": "Personal", "color": "pink"},
+                                ]
+                            }
+                        },
+                    }
                 }
             )
             return db["id"]
@@ -298,22 +319,25 @@ class NotionSetupService:
             db = self.client.databases.create(
                 parent={"type": "page_id", "page_id": parent_id},
                 title=[{"type": "text", "text": {"content": "💊 Daily Knowledge Pills"}}],
-                properties={
-                    "Name": {"title": {}},
-                    "Date": {"date": {}},
-                    "Category": {
-                        "multi_select": {
-                            "options": [
-                                {"name": "AI/ML", "color": "purple"},
-                                {"name": "Neuroscience", "color": "pink"},
-                                {"name": "Finance", "color": "green"},
-                                {"name": "Tech", "color": "blue"},
-                                {"name": "Science", "color": "orange"},
-                            ]
-                        }
-                    },
-                    "Tags": {"multi_select": {}},
-                    "URL": {"url": {}},
+                initial_data_source={
+                    "properties": {
+                        "Name": {"type": "title", "title": {}},
+                        "Date": {"type": "date", "date": {}},
+                        "Category": {
+                            "type": "multi_select",
+                            "multi_select": {
+                                "options": [
+                                    {"name": "AI/ML", "color": "purple"},
+                                    {"name": "Neuroscience", "color": "pink"},
+                                    {"name": "Finance", "color": "green"},
+                                    {"name": "Tech", "color": "blue"},
+                                    {"name": "Science", "color": "orange"},
+                                ]
+                            }
+                        },
+                        "Tags": {"type": "multi_select", "multi_select": {}},
+                        "URL": {"type": "url", "url": {}},
+                    }
                 }
             )
             logger.info(f"Created Pills DB: {db['id']}")
@@ -366,4 +390,3 @@ class NotionSetupService:
             
         except Exception as e:
             logger.error(f"Failed to update .env file: {e}")
-
