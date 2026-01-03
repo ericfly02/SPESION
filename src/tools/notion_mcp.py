@@ -352,7 +352,11 @@ def create_knowledge_pill(
         blocks.append({
             "type": "paragraph",
             "paragraph": {
-                "rich_text": [{"text": {"content": f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M')}", "annotations": {"italic": True, "color": "gray"}}}]
+                "rich_text": [{
+                    "type": "text",
+                    "text": {"content": f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M')}"},
+                    "annotations": {"italic": True, "color": "gray"}
+                }]
             }
         })
         
