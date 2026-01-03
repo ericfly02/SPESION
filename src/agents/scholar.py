@@ -64,11 +64,13 @@ def create_scholar_agent(
     """
     from src.tools.arxiv_tool import create_arxiv_tools
     from src.tools.search_tool import create_search_tools
+    from src.tools.notion_mcp import create_notion_journal_tools # Importar tools de Notion Journal
     
     # Combinar herramientas default con las proporcionadas
     default_tools = [
         *create_arxiv_tools(),
         *create_search_tools(),
+        *create_notion_journal_tools(), # Añadir capacidad de escribir en Journal/Knowledge base
     ]
     
     all_tools = default_tools + (tools or [])

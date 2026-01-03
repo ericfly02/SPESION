@@ -457,6 +457,26 @@ O simplemente escríbeme lo que necesites."""
         self._app = app
         return app
 
+    async def _send_long_message(self, chat_id: int, text: str, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Envía un mensaje largo dividiéndolo en fragmentos seguros."""
+        max_length = 4000
+        
+        if len(text) <= max_length:
+            try:
+                await context.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+            except TelegramError:
+                await context.bot.send_message(chat_id=chat_id, text=text)
+            return
+
+        # Split logic simple pero efectiva
+        chunks = [text[i:i+max_length] for i in range(0, len(text), max_length)]
+        for i, chunk in enumerate(chunks):
+            try:
+                await context.bot.send_message(chat_id=chat_id, text=chunk, parse_mode="Markdown")
+            except TelegramError:
+                # Si falla el markdown (probablemente cortamos un tag), enviar texto plano
+                await context.bot.send_message(chat_id=chat_id, text=chunk)
+
     async def send_scholar_daily_summary(self, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Envía el resumen diario de Scholar."""
         # Si no hay usuarios en allowed_users, intentar obtenerlos de las variables de entorno
@@ -465,27 +485,21 @@ O simplemente escríbeme lo que necesites."""
         if self.allowed_users:
             target_chat_id = self.allowed_users[0]
         else:
-            # Fallback: intentar leer de variable de entorno directa o log error
-            # Para este caso, si el usuario ya ha interactuado, podríamos guardar su chat_id en DB
-            # Pero por simplicidad, asumiremos que se debe configurar en .env
             logger.warning("No hay usuarios configurados en TELEGRAM_ALLOWED_USER_IDS para el resumen diario.")
             return
 
         logger.info(f"Ejecutando resumen diario de Scholar para {target_chat_id}")
         
         try:
-            # Invocar al Scholar directamente
+            # Invocar al Scholar directamente con instrucción explícita de guardar en Notion
             response = await self.assistant.achat(
-                message="Genera mi resumen diario de papers ArXiv y noticias tech importantes de hoy.",
+                message="Genera mi resumen diario 'Super Aesthetic' de papers ArXiv y noticias tech importantes de hoy. IMPORTANTE: Intenta guardar este resumen en mi base de conocimiento de Notion usando la herramienta 'create_journal_entry' si está disponible, y luego dame el link y un resumen breve aquí.",
                 user_id=str(target_chat_id),
                 telegram_chat_id=target_chat_id,
             )
             
-            await context.bot.send_message(
-                chat_id=target_chat_id,
-                text=f"🎓 **Scholar Daily Briefing**\n\n{response}",
-                parse_mode="Markdown"
-            )
+            await self._send_long_message(target_chat_id, f"🎓 **Scholar Daily Briefing**\n\n{response}", context)
+            
         except Exception as e:
             logger.error(f"Error en resumen diario Scholar: {e}")
             await context.bot.send_message(
