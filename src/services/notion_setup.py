@@ -96,257 +96,231 @@ class NotionSetupService:
 
     def _create_knowledge_db(self, parent_id: str) -> str:
         """Creates Knowledge/Journal DB."""
-        # Paso 1: Crear DB mínima
-        db = self.client.databases.create(
-            parent={"type": "page_id", "page_id": parent_id},
-            title=[{"type": "text", "text": {"content": "🧠 Knowledge & Journal"}}],
-            properties={
-                "Name": {"title": {}}
-            }
-        )
-        
-        # Paso 2: Añadir columnas complejas
-        self.client.databases.update(
-            database_id=db["id"],
-            properties={
-                "Type": {
-                    "select": {
-                        "options": [
-                            {"name": "Journal", "color": "blue"},
-                            {"name": "Paper", "color": "red"},
-                            {"name": "Note", "color": "gray"},
-                            {"name": "Insight", "color": "yellow"},
-                        ]
-                    }
-                },
-                "Date": {"date": {}},
-                "Tags": {"multi_select": {}},
-                "Mood": {
-                    "select": {
-                        "options": [
-                            {"name": "Great", "color": "green"},
-                            {"name": "Good", "color": "blue"},
-                            {"name": "Okay", "color": "gray"},
-                            {"name": "Bad", "color": "orange"},
-                            {"name": "Terrible", "color": "red"},
-                        ]
-                    }
-                },
-                "Energy": {"number": {"format": "number"}},
-                "URL": {"url": {}},
-                "ArXiv ID": {"rich_text": {}},
-                "Authors": {"rich_text": {}},
-                "Summary": {"rich_text": {}},
-            }
-        )
-        return db["id"]
+        try:
+            db = self.client.databases.create(
+                parent={"type": "page_id", "page_id": parent_id},
+                title=[{"type": "text", "text": {"content": "🧠 Knowledge & Journal"}}],
+                properties={
+                    "Name": {"title": {}},
+                    "Type": {
+                        "select": {
+                            "options": [
+                                {"name": "Journal", "color": "blue"},
+                                {"name": "Paper", "color": "red"},
+                                {"name": "Note", "color": "gray"},
+                                {"name": "Insight", "color": "yellow"},
+                            ]
+                        }
+                    },
+                    "Date": {"date": {}},
+                    "Tags": {"multi_select": {}},
+                    "Mood": {
+                        "select": {
+                            "options": [
+                                {"name": "Great", "color": "green"},
+                                {"name": "Good", "color": "blue"},
+                                {"name": "Okay", "color": "gray"},
+                                {"name": "Bad", "color": "orange"},
+                                {"name": "Terrible", "color": "red"},
+                            ]
+                        }
+                    },
+                    "Energy": {"number": {"format": "number"}},
+                    "URL": {"url": {}},
+                    "ArXiv ID": {"rich_text": {}},
+                    "Authors": {"rich_text": {}},
+                    "Summary": {"rich_text": {}},
+                }
+            )
+            return db["id"]
+        except Exception as e:
+            logger.error(f"Error creating Knowledge DB: {e}")
+            raise
 
     def _create_tasks_db(self, parent_id: str) -> str:
         """Creates Tasks DB."""
-        db = self.client.databases.create(
-            parent={"type": "page_id", "page_id": parent_id},
-            title=[{"type": "text", "text": {"content": "✅ Tasks & Projects"}}],
-            properties={"Name": {"title": {}}}
-        )
-        
-        self.client.databases.update(
-            database_id=db["id"],
-            properties={
-                "Status": {
-                    "status": {
-                        "options": [
-                            {"name": "Todo", "color": "gray"},
-                            {"name": "In Progress", "color": "blue"},
-                            {"name": "Done", "color": "green"},
-                        ]
-                    }
-                },
-                "Priority": {
-                    "select": {
-                        "options": [
-                            {"name": "High", "color": "red"},
-                            {"name": "Medium", "color": "yellow"},
-                            {"name": "Low", "color": "blue"},
-                        ]
-                    }
-                },
-                "Due Date": {"date": {}},
-                "Project": {
-                    "select": {
-                        "options": [
-                            {"name": "Civita", "color": "purple"},
-                            {"name": "Creda", "color": "green"},
-                            {"name": "WhoHub", "color": "orange"},
-                            {"name": "Personal", "color": "gray"},
-                            {"name": "NTTData", "color": "blue"},
-                        ]
-                    }
-                },
-                "Cognitive Load": {
-                    "select": {
-                        "options": [
-                            {"name": "High (Deep Work)", "color": "red"},
-                            {"name": "Medium", "color": "yellow"},
-                            {"name": "Low (Admin)", "color": "blue"},
-                        ]
-                    }
-                },
-            }
-        )
-        return db["id"]
+        try:
+            db = self.client.databases.create(
+                parent={"type": "page_id", "page_id": parent_id},
+                title=[{"type": "text", "text": {"content": "✅ Tasks & Projects"}}],
+                properties={
+                    "Name": {"title": {}},
+                    "Status": {"status": {}}, # Using default status options to avoid API errors
+                    "Priority": {
+                        "select": {
+                            "options": [
+                                {"name": "High", "color": "red"},
+                                {"name": "Medium", "color": "yellow"},
+                                {"name": "Low", "color": "blue"},
+                            ]
+                        }
+                    },
+                    "Due Date": {"date": {}},
+                    "Project": {
+                        "select": {
+                            "options": [
+                                {"name": "Civita", "color": "purple"},
+                                {"name": "Creda", "color": "green"},
+                                {"name": "WhoHub", "color": "orange"},
+                                {"name": "Personal", "color": "gray"},
+                                {"name": "NTTData", "color": "blue"},
+                            ]
+                        }
+                    },
+                    "Cognitive Load": {
+                        "select": {
+                            "options": [
+                                {"name": "High (Deep Work)", "color": "red"},
+                                {"name": "Medium", "color": "yellow"},
+                                {"name": "Low (Admin)", "color": "blue"},
+                            ]
+                        }
+                    },
+                }
+            )
+            return db["id"]
+        except Exception as e:
+            logger.error(f"Error creating Tasks DB: {e}")
+            raise
 
     def _create_crm_db(self, parent_id: str) -> str:
         """Creates Network/CRM DB."""
-        db = self.client.databases.create(
-            parent={"type": "page_id", "page_id": parent_id},
-            title=[{"type": "text", "text": {"content": "🤝 Network (WhoHub)"}}],
-            properties={"Name": {"title": {}}}
-        )
-        
-        self.client.databases.update(
-            database_id=db["id"],
-            properties={
-                "Company": {"rich_text": {}},
-                "Role": {"rich_text": {}},
-                "Strength": {
-                    "select": {
-                        "options": [
-                            {"name": "⭐⭐⭐⭐⭐ Inner Circle", "color": "green"},
-                            {"name": "⭐⭐⭐⭐ Trusted", "color": "blue"},
-                            {"name": "⭐⭐⭐ Active", "color": "yellow"},
-                            {"name": "⭐⭐ Professional", "color": "gray"},
-                            {"name": "⭐ Acquaintance", "color": "default"},
-                        ]
-                    }
-                },
-                "Last Contact": {"date": {}},
-                "How Met": {"rich_text": {}},
-                "Tags": {"multi_select": {}},
-                "LinkedIn": {"url": {}},
-            }
-        )
-        return db["id"]
+        try:
+            db = self.client.databases.create(
+                parent={"type": "page_id", "page_id": parent_id},
+                title=[{"type": "text", "text": {"content": "🤝 Network (WhoHub)"}}],
+                properties={
+                    "Name": {"title": {}},
+                    "Company": {"rich_text": {}},
+                    "Role": {"rich_text": {}},
+                    "Strength": {
+                        "select": {
+                            "options": [
+                                {"name": "⭐⭐⭐⭐⭐ Inner Circle", "color": "green"},
+                                {"name": "⭐⭐⭐⭐ Trusted", "color": "blue"},
+                                {"name": "⭐⭐⭐ Active", "color": "yellow"},
+                                {"name": "⭐⭐ Professional", "color": "gray"},
+                                {"name": "⭐ Acquaintance", "color": "default"},
+                            ]
+                        }
+                    },
+                    "Last Contact": {"date": {}},
+                    "How Met": {"rich_text": {}},
+                    "Tags": {"multi_select": {}},
+                    "LinkedIn": {"url": {}},
+                }
+            )
+            return db["id"]
+        except Exception as e:
+            logger.error(f"Error creating CRM DB: {e}")
+            raise
 
     def _create_finance_db(self, parent_id: str) -> str:
         """Creates Finance Portfolio DB."""
-        db = self.client.databases.create(
-            parent={"type": "page_id", "page_id": parent_id},
-            title=[{"type": "text", "text": {"content": "💰 Finance Portfolio"}}],
-            properties={"Ticker": {"title": {}}}
-        )
-        
-        self.client.databases.update(
-            database_id=db["id"],
-            properties={
-                "Type": {
-                    "select": {
-                        "options": [
-                            {"name": "ETF", "color": "blue"},
-                            {"name": "Stock", "color": "green"},
-                            {"name": "Crypto", "color": "orange"},
-                            {"name": "Cash", "color": "gray"},
-                        ]
-                    }
-                },
-                "Category": {
-                    "select": {
-                        "options": [
-                            {"name": "Core", "color": "blue"},
-                            {"name": "Thematic", "color": "purple"},
-                            {"name": "Speculative", "color": "red"},
-                        ]
-                    }
-                },
-                "Amount": {"number": {"format": "euro"}},
-                "Quantity": {"number": {"format": "number"}},
-                "Avg Price": {"number": {"format": "euro"}},
-                "Current Price": {"number": {"format": "euro"}},
-                "Last Updated": {"date": {}},
-            }
-        )
-        return db["id"]
+        try:
+            db = self.client.databases.create(
+                parent={"type": "page_id", "page_id": parent_id},
+                title=[{"type": "text", "text": {"content": "💰 Finance Portfolio"}}],
+                properties={
+                    "Ticker": {"title": {}},
+                    "Type": {
+                        "select": {
+                            "options": [
+                                {"name": "ETF", "color": "blue"},
+                                {"name": "Stock", "color": "green"},
+                                {"name": "Crypto", "color": "orange"},
+                                {"name": "Cash", "color": "gray"},
+                            ]
+                        }
+                    },
+                    "Category": {
+                        "select": {
+                            "options": [
+                                {"name": "Core", "color": "blue"},
+                                {"name": "Thematic", "color": "purple"},
+                                {"name": "Speculative", "color": "red"},
+                            ]
+                        }
+                    },
+                    "Amount": {"number": {"format": "euro"}},
+                    "Quantity": {"number": {"format": "number"}},
+                    "Avg Price": {"number": {"format": "euro"}},
+                    "Current Price": {"number": {"format": "euro"}},
+                    "Last Updated": {"date": {}},
+                }
+            )
+            return db["id"]
+        except Exception as e:
+            logger.error(f"Error creating Finance DB: {e}")
+            raise
 
     def _create_goals_db(self, parent_id: str) -> str:
         """Creates Goals 2026 DB."""
-        db = self.client.databases.create(
-            parent={"type": "page_id", "page_id": parent_id},
-            title=[{"type": "text", "text": {"content": "🎯 Goals 2026"}}],
-            properties={"Goal": {"title": {}}}
-        )
-        
-        self.client.databases.update(
-            database_id=db["id"],
-            properties={
-                "Status": {
-                    "status": {
-                        "options": [
-                            {"name": "Not Started", "color": "gray"},
-                            {"name": "In Progress", "color": "blue"},
-                            {"name": "Achieved", "color": "green"},
-                            {"name": "Behind", "color": "red"},
-                        ]
-                    }
-                },
-                "Quarter": {
-                    "select": {
-                        "options": [
-                            {"name": "Q1", "color": "blue"},
-                            {"name": "Q2", "color": "green"},
-                            {"name": "Q3", "color": "yellow"},
-                            {"name": "Q4", "color": "orange"},
-                            {"name": "Year", "color": "purple"},
-                        ]
-                    }
-                },
-                "Progress": {"number": {"format": "percent"}},
-                "Area": {
-                    "select": {
-                        "options": [
-                            {"name": "Career", "color": "blue"},
-                            {"name": "Health", "color": "green"},
-                            {"name": "Finance", "color": "yellow"},
-                            {"name": "Personal", "color": "pink"},
-                        ]
-                    }
-                },
-            }
-        )
-        return db["id"]
+        try:
+            db = self.client.databases.create(
+                parent={"type": "page_id", "page_id": parent_id},
+                title=[{"type": "text", "text": {"content": "🎯 Goals 2026"}}],
+                properties={
+                    "Goal": {"title": {}},
+                    "Status": {"status": {}}, # Using default status options
+                    "Quarter": {
+                        "select": {
+                            "options": [
+                                {"name": "Q1", "color": "blue"},
+                                {"name": "Q2", "color": "green"},
+                                {"name": "Q3", "color": "yellow"},
+                                {"name": "Q4", "color": "orange"},
+                                {"name": "Year", "color": "purple"},
+                            ]
+                        }
+                    },
+                    "Progress": {"number": {"format": "percent"}},
+                    "Area": {
+                        "select": {
+                            "options": [
+                                {"name": "Career", "color": "blue"},
+                                {"name": "Health", "color": "green"},
+                                {"name": "Finance", "color": "yellow"},
+                                {"name": "Personal", "color": "pink"},
+                            ]
+                        }
+                    },
+                }
+            )
+            return db["id"]
+        except Exception as e:
+            logger.error(f"Error creating Goals DB: {e}")
+            raise
 
     def _create_pills_db(self, parent_id: str) -> str:
         """Creates Daily Knowledge Pills DB."""
-        # 1. Crear base de datos vacía primero (solo título)
-        db = self.client.databases.create(
-            parent={"type": "page_id", "page_id": parent_id},
-            title=[{"type": "text", "text": {"content": "💊 Daily Knowledge Pills"}}],
-            properties={
-                "Name": {"title": {}} # Solo la propiedad obligatoria
-            }
-        )
-        db_id = db["id"]
-        
-        # 2. Actualizar esquema para añadir propiedades (más seguro)
-        self.client.databases.update(
-            database_id=db_id,
-            properties={
-                "Date": {"date": {}},
-                "Category": {
-                    "multi_select": {
-                        "options": [
-                            {"name": "AI/ML", "color": "purple"},
-                            {"name": "Neuroscience", "color": "pink"},
-                            {"name": "Finance", "color": "green"},
-                            {"name": "Tech", "color": "blue"},
-                            {"name": "Science", "color": "orange"},
-                        ]
-                    }
-                },
-                "Tags": {"multi_select": {}},
-                "URL": {"url": {}},
-            }
-        )
-        
-        return db_id
+        try:
+            db = self.client.databases.create(
+                parent={"type": "page_id", "page_id": parent_id},
+                title=[{"type": "text", "text": {"content": "💊 Daily Knowledge Pills"}}],
+                properties={
+                    "Name": {"title": {}},
+                    "Date": {"date": {}},
+                    "Category": {
+                        "multi_select": {
+                            "options": [
+                                {"name": "AI/ML", "color": "purple"},
+                                {"name": "Neuroscience", "color": "pink"},
+                                {"name": "Finance", "color": "green"},
+                                {"name": "Tech", "color": "blue"},
+                                {"name": "Science", "color": "orange"},
+                            ]
+                        }
+                    },
+                    "Tags": {"multi_select": {}},
+                    "URL": {"url": {}},
+                }
+            )
+            logger.info(f"Created Pills DB: {db['id']}")
+            return db["id"]
+        except Exception as e:
+            logger.error(f"Error creating Pills DB: {e}")
+            raise
 
     def _update_env_file(self, ids: dict[str, str]):
         """Updates the .env file with new IDs."""
