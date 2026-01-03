@@ -123,7 +123,11 @@ class BaseAgent(ABC):
         Returns:
             Lista de mensajes incluyendo system prompt y contexto
         """
-        messages = [SystemMessage(content=self.system_prompt)]
+        from datetime import datetime
+        current_date = datetime.now().strftime("%A, %d de %B de %Y")
+        
+        system_content = f"📅 FECHA ACTUAL: {current_date}\n\n{self.system_prompt}"
+        messages = [SystemMessage(content=system_content)]
         
         # 1. Recuperar contexto RAG automáticamente basado en el último mensaje
         last_human_message = None

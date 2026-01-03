@@ -491,14 +491,43 @@ O simplemente escríbeme lo que necesites."""
         logger.info(f"Ejecutando resumen diario de Scholar para {target_chat_id}")
         
         try:
-            # Invocar al Scholar directamente con instrucción explícita de guardar en Notion
-            response = await self.assistant.achat(
-                message="Genera mi resumen diario 'Super Aesthetic' de papers ArXiv y noticias tech importantes de hoy. IMPORTANTE: Intenta guardar este resumen en mi base de datos 'Daily Knowledge Pills' usando la herramienta 'create_knowledge_pill' (ponle de título 'Daily Briefing - YYYY-MM-DD'), y luego dame el link y un resumen breve aquí.",
+            # 1. Generar contenido (Texto plano, sin tool calls)
+            response_text = await self.assistant.achat(
+                message="Genera mi resumen diario 'Super Aesthetic' de papers ArXiv y noticias tech importantes de hoy. Céntrate SOLO en generar el contenido en Markdown de alta calidad. No intentes guardarlo, solo dame el texto.",
                 user_id=str(target_chat_id),
                 telegram_chat_id=target_chat_id,
             )
             
-            await self._send_long_message(target_chat_id, f"🎓 **Scholar Daily Briefing**\n\n{response}", context)
+            # 2. Guardar en Notion manualmente (Código-driven para fiabilidad)
+            final_message = f"🎓 **Scholar Daily Briefing**\n\n{response_text}"
+            
+            try:
+                from src.tools.notion_mcp import create_knowledge_pill
+                from datetime import datetime
+                
+                today_str = datetime.now().strftime("%Y-%m-%d")
+                title = f"Daily Briefing - {today_str}"
+                
+                # Invocar herramienta directamente
+                save_result = create_knowledge_pill.invoke({
+                    "title": title,
+                    "content": response_text,
+                    "categories": ["Daily Briefing", "Scholar"],
+                    "tags": ["AI", "Tech", "Auto"]
+                })
+                
+                if isinstance(save_result, dict) and save_result.get("created"):
+                    url = save_result.get("url")
+                    final_message += f"\n\n💾 **Guardado en Notion:** [Ver en SPESION HQ]({url})"
+                elif isinstance(save_result, dict) and "error" in save_result:
+                    logger.error(f"Error guardando en Notion: {save_result['error']}")
+                    final_message += f"\n\n⚠️ *No se pudo guardar en Notion automáticamente.*"
+                    
+            except Exception as e_notion:
+                logger.error(f"Excepción guardando en Notion: {e_notion}")
+            
+            # 3. Enviar a Telegram
+            await self._send_long_message(target_chat_id, final_message, context)
             
         except Exception as e:
             logger.error(f"Error en resumen diario Scholar: {e}")
