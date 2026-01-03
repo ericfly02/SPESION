@@ -96,11 +96,19 @@ class NotionSetupService:
 
     def _create_knowledge_db(self, parent_id: str) -> str:
         """Creates Knowledge/Journal DB."""
+        # Paso 1: Crear DB mínima
         db = self.client.databases.create(
             parent={"type": "page_id", "page_id": parent_id},
             title=[{"type": "text", "text": {"content": "🧠 Knowledge & Journal"}}],
             properties={
-                "Name": {"title": {}},
+                "Name": {"title": {}}
+            }
+        )
+        
+        # Paso 2: Añadir columnas complejas
+        self.client.databases.update(
+            database_id=db["id"],
+            properties={
                 "Type": {
                     "select": {
                         "options": [
@@ -138,8 +146,12 @@ class NotionSetupService:
         db = self.client.databases.create(
             parent={"type": "page_id", "page_id": parent_id},
             title=[{"type": "text", "text": {"content": "✅ Tasks & Projects"}}],
+            properties={"Name": {"title": {}}}
+        )
+        
+        self.client.databases.update(
+            database_id=db["id"],
             properties={
-                "Name": {"title": {}},
                 "Status": {
                     "status": {
                         "options": [
@@ -188,8 +200,12 @@ class NotionSetupService:
         db = self.client.databases.create(
             parent={"type": "page_id", "page_id": parent_id},
             title=[{"type": "text", "text": {"content": "🤝 Network (WhoHub)"}}],
+            properties={"Name": {"title": {}}}
+        )
+        
+        self.client.databases.update(
+            database_id=db["id"],
             properties={
-                "Name": {"title": {}},
                 "Company": {"rich_text": {}},
                 "Role": {"rich_text": {}},
                 "Strength": {
@@ -216,8 +232,12 @@ class NotionSetupService:
         db = self.client.databases.create(
             parent={"type": "page_id", "page_id": parent_id},
             title=[{"type": "text", "text": {"content": "💰 Finance Portfolio"}}],
+            properties={"Ticker": {"title": {}}}
+        )
+        
+        self.client.databases.update(
+            database_id=db["id"],
             properties={
-                "Ticker": {"title": {}}, # Using Name as Ticker
                 "Type": {
                     "select": {
                         "options": [
@@ -240,7 +260,7 @@ class NotionSetupService:
                 "Amount": {"number": {"format": "euro"}},
                 "Quantity": {"number": {"format": "number"}},
                 "Avg Price": {"number": {"format": "euro"}},
-                "Current Price": {"number": {"format": "euro"}}, # To be updated by Tycoon
+                "Current Price": {"number": {"format": "euro"}},
                 "Last Updated": {"date": {}},
             }
         )
@@ -251,8 +271,12 @@ class NotionSetupService:
         db = self.client.databases.create(
             parent={"type": "page_id", "page_id": parent_id},
             title=[{"type": "text", "text": {"content": "🎯 Goals 2026"}}],
+            properties={"Goal": {"title": {}}}
+        )
+        
+        self.client.databases.update(
+            database_id=db["id"],
             properties={
-                "Goal": {"title": {}},
                 "Status": {
                     "status": {
                         "options": [
@@ -291,11 +315,20 @@ class NotionSetupService:
 
     def _create_pills_db(self, parent_id: str) -> str:
         """Creates Daily Knowledge Pills DB."""
+        # 1. Crear base de datos vacía primero (solo título)
         db = self.client.databases.create(
             parent={"type": "page_id", "page_id": parent_id},
             title=[{"type": "text", "text": {"content": "💊 Daily Knowledge Pills"}}],
             properties={
-                "Name": {"title": {}},
+                "Name": {"title": {}} # Solo la propiedad obligatoria
+            }
+        )
+        db_id = db["id"]
+        
+        # 2. Actualizar esquema para añadir propiedades (más seguro)
+        self.client.databases.update(
+            database_id=db_id,
+            properties={
                 "Date": {"date": {}},
                 "Category": {
                     "multi_select": {
@@ -312,7 +345,8 @@ class NotionSetupService:
                 "URL": {"url": {}},
             }
         )
-        return db["id"]
+        
+        return db_id
 
     def _update_env_file(self, ids: dict[str, str]):
         """Updates the .env file with new IDs."""
