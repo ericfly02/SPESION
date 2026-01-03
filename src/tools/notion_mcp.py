@@ -325,7 +325,7 @@ def create_knowledge_pill(
         today = datetime.now().strftime("%Y-%m-%d")
         
         properties = {
-            "Title": {"title": [{"text": {"content": title}}]},
+            "Name": {"title": [{"text": {"content": title}}]},
             "Date": {"date": {"start": today}},
         }
         

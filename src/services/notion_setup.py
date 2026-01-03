@@ -295,7 +295,7 @@ class NotionSetupService:
             parent={"type": "page_id", "page_id": parent_id},
             title=[{"type": "text", "text": {"content": "💊 Daily Knowledge Pills"}}],
             properties={
-                "Title": {"title": {}},
+                "Name": {"title": {}},
                 "Date": {"date": {}},
                 "Category": {
                     "multi_select": {
