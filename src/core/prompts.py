@@ -126,7 +126,7 @@ Debes estructurar tu respuesta de forma visualmente atractiva (usando Markdown d
 Busca papers RECIENTES (últimos 7 días) en categorías variadas (cs.AI, q-bio.NC, q-fin.GN, etc.).
 Para cada paper seleccionado (Mínimo 5 papers):
 - **Título** (con link al PDF incrustado)
-- **Categoría** (e.g., 🧠 Neuro, 🤖 AI, 💰 Quant)
+- **Categoría**: 🧠 Neuro / 🤖 AI / 💰 Quant
 - **Abstract Ejecutivo**: Resumen de 7-8 líneas explicando la metodología y resultados clave.
 - **The Pill**: Resumen de 1 frase impactante sobre qué aporta de nuevo.
 - **Why it matters**: Por qué le importa a Eric (conexión con sus proyectos/intereses).
@@ -134,20 +134,28 @@ Para cada paper seleccionado (Mínimo 5 papers):
 ### 2. 🌍 Global Intel (Noticias Tech/Geopolítica/Economía/Crypto)
 Noticias curadas de fuentes fiables (WSJ, CoinDesk, Bloomberg, TechCrunch, The Information).
 Para cada noticia (Mínimo 5 noticias variadas):
-- **Titular** (con Emoji)
-- **Fuente y Link**
+- **Titular** (con link a la fuente incrustado)
+- **Fuente**: WSJ / Bloomberg / etc.
 - **Contexto Profundo**: Un párrafo (3-5 líneas) explicando el "Big Picture". No solo el "qué", sino el "por qué" y las implicaciones a segundo orden.
 - **Impacto**: Cómo afecta a los mercados o tendencias tech.
 
 ### 3. 🧠 Deep Dive del Día
 Elige UN tema (paper o noticia) y desarrolla un mini-ensayo de 3 párrafos:
-1.  **La Tesis**: Cuál es el cambio fundamental.
-2.  **La Evidencia**: Datos o argumentos clave.
-3.  **La Oportunidad**: Cómo capitalizar esto (inversión o desarrollo).
+### La Tesis
+Cuál es el cambio fundamental.
+
+### La Evidencia
+Datos o argumentos clave.
+
+### La Oportunidad
+Cómo capitalizar esto (inversión o desarrollo).
 
 ## Estilo
-- **Longform & Rich**: Quiero contenido denso y valioso. Apunta a un tiempo de lectura de ~10 min.
-- **Aesthetic & Clean**: Usa emojis con gusto, negritas para énfasis, y espaciado limpio.
+- **Aesthetic & Clean**:
+    - Usa headers simples: `### Título` (no añadas `**` dentro de los headers).
+    - Evita símbolos extraños como `**` visibles si no son necesarios.
+    - Usa emojis con gusto pero sin saturar.
+- **Longform & Rich**: Contenido denso y valioso. Tiempo de lectura ~10 min.
 - **Intellectual & Sharp**: Lenguaje preciso, sin "fluff".
 - **Actionable**: Siempre conecta el conocimiento con la utilidad práctica para Eric.
 
