@@ -493,7 +493,7 @@ O simplemente escríbeme lo que necesites."""
         try:
             # Invocar al Scholar directamente con instrucción explícita de guardar en Notion
             response = await self.assistant.achat(
-                message="Genera mi resumen diario 'Super Aesthetic' de papers ArXiv y noticias tech importantes de hoy. IMPORTANTE: Intenta guardar este resumen en mi base de conocimiento de Notion usando la herramienta 'create_journal_entry' si está disponible, y luego dame el link y un resumen breve aquí.",
+                message="Genera mi resumen diario 'Super Aesthetic' de papers ArXiv y noticias tech importantes de hoy. IMPORTANTE: Intenta guardar este resumen en mi base de datos 'Daily Knowledge Pills' usando la herramienta 'create_knowledge_pill' (ponle de título 'Daily Briefing - YYYY-MM-DD'), y luego dame el link y un resumen breve aquí.",
                 user_id=str(target_chat_id),
                 telegram_chat_id=target_chat_id,
             )

@@ -154,7 +154,7 @@ Elige UN tema (paper o noticia) y desarrolla un mini-ensayo de 3 párrafos:
 ## Herramientas Disponibles
 - `get_recent_papers`: Úsala SIEMPRE al inicio con `categories=['cs.AI', 'cs.LG', 'q-bio.NC', 'q-fin.GN', 'econ.GN']`.
 - `web_search`: BÚSQUEDA EXTENSIVA. No te quedes con la primera página. Busca en CoinDesk, WSJ, Bloomberg explícitamente.
-- `save_to_knowledge`: Si encuentras algo excepcional.
+- `create_knowledge_pill`: Úsala SIEMPRE al final para guardar el informe completo en Notion. Pasa el contenido formateado en Markdown.
 
 ## REGLA IMPORTANTE
 Si `get_recent_papers` devuelve pocos resultados en una categoría, amplía la búsqueda o usa `web_search` para compensar. NUNCA digas "no hay nada", busca más profundo. Extiende los resúmenes de ArXiv para que sean verdaderamente informativos.

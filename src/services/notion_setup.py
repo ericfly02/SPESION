@@ -39,6 +39,7 @@ class NotionSetupService:
         ids["crm"] = self._create_crm_db(root_id)
         ids["finance"] = self._create_finance_db(root_id)
         ids["goals"] = self._create_goals_db(root_id)
+        ids["pills"] = self._create_pills_db(root_id)
 
         # 3. Update .env file
         self._update_env_file(ids)
@@ -288,6 +289,31 @@ class NotionSetupService:
         )
         return db["id"]
 
+    def _create_pills_db(self, parent_id: str) -> str:
+        """Creates Daily Knowledge Pills DB."""
+        db = self.client.databases.create(
+            parent={"type": "page_id", "page_id": parent_id},
+            title=[{"type": "text", "text": {"content": "💊 Daily Knowledge Pills"}}],
+            properties={
+                "Title": {"title": {}},
+                "Date": {"date": {}},
+                "Category": {
+                    "multi_select": {
+                        "options": [
+                            {"name": "AI/ML", "color": "purple"},
+                            {"name": "Neuroscience", "color": "pink"},
+                            {"name": "Finance", "color": "green"},
+                            {"name": "Tech", "color": "blue"},
+                            {"name": "Science", "color": "orange"},
+                        ]
+                    }
+                },
+                "Tags": {"multi_select": {}},
+                "URL": {"url": {}},
+            }
+        )
+        return db["id"]
+
     def _update_env_file(self, ids: dict[str, str]):
         """Updates the .env file with new IDs."""
         env_path = ".env"
@@ -299,6 +325,7 @@ class NotionSetupService:
             "crm": "NOTION_CRM_DATABASE_ID",
             "finance": "NOTION_FINANCE_DATABASE_ID",
             "goals": "NOTION_GOALS_DATABASE_ID",
+            "pills": "NOTION_PILLS_DATABASE_ID",
         }
         
         try:

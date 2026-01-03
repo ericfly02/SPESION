@@ -290,6 +290,130 @@ def create_journal_entry(
 
 
 # =============================================================================
+# HERRAMIENTAS DE KNOWLEDGE PILLS
+# =============================================================================
+
+@tool
+def create_knowledge_pill(
+    title: str,
+    content: str,
+    categories: list[str] | None = None,
+    tags: list[str] | None = None,
+    url: str | None = None,
+) -> dict[str, Any]:
+    """Crea una entrada en la base de datos de Knowledge Pills.
+    
+    Args:
+        title: Título del briefing
+        content: Contenido completo en Markdown
+        categories: Categorías (AI/ML, Neuroscience, etc.)
+        tags: Etiquetas adicionales
+        url: URL relevante
+        
+    Returns:
+        Dict con la entrada creada
+    """
+    client = _get_notion_client()
+    if client is None:
+        return {"error": "Notion no disponible"}
+    
+    from src.core.config import settings
+    if not settings.notion.pills_database_id:
+        return {"error": "Pills database ID no configurado. Ejecuta setup_notion_workspace primero."}
+    
+    try:
+        today = datetime.now().strftime("%Y-%m-%d")
+        
+        properties = {
+            "Title": {"title": [{"text": {"content": title}}]},
+            "Date": {"date": {"start": today}},
+        }
+        
+        if categories:
+            properties["Category"] = {"multi_select": [{"name": c} for c in categories]}
+            
+        if tags:
+            properties["Tags"] = {"multi_select": [{"name": t} for t in tags]}
+            
+        if url:
+            properties["URL"] = {"url": url}
+        
+        # Crear página
+        response = client.pages.create(
+            parent={"database_id": settings.notion.pills_database_id},
+            properties=properties,
+        )
+        
+        # Dividir contenido en bloques (párrafos) para no exceder límites de bloque de Notion (2000 chars)
+        # Una estrategia simple es dividir por saltos de línea dobles
+        
+        blocks = []
+        # Añadir timestamp
+        blocks.append({
+            "type": "paragraph",
+            "paragraph": {
+                "rich_text": [{"text": {"content": f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M')}", "annotations": {"italic": True, "color": "gray"}}}]
+            }
+        })
+        
+        # Procesar contenido markdown simple
+        parts = content.split("\n\n")
+        for part in parts:
+            if not part.strip():
+                continue
+                
+            if len(part) > 1900:
+                # Si un párrafo es muy largo, dividirlo más
+                subparts = [part[i:i+1900] for i in range(0, len(part), 1900)]
+                for sub in subparts:
+                    blocks.append({
+                        "type": "paragraph",
+                        "paragraph": {"rich_text": [{"text": {"content": sub}}]}
+                    })
+            else:
+                # Detectar encabezados básicos
+                if part.startswith("# "):
+                    blocks.append({
+                        "type": "heading_1",
+                        "heading_1": {"rich_text": [{"text": {"content": part[2:]}}]}
+                    })
+                elif part.startswith("## "):
+                    blocks.append({
+                        "type": "heading_2",
+                        "heading_2": {"rich_text": [{"text": {"content": part[3:]}}]}
+                    })
+                elif part.startswith("### "):
+                    blocks.append({
+                        "type": "heading_3",
+                        "heading_3": {"rich_text": [{"text": {"content": part[4:]}}]}
+                    })
+                else:
+                    blocks.append({
+                        "type": "paragraph",
+                        "paragraph": {"rich_text": [{"text": {"content": part}}]}
+                    })
+        
+        # Subir bloques en lotes de 100 (límite de Notion API)
+        for i in range(0, len(blocks), 100):
+            batch = blocks[i:i+100]
+            client.blocks.children.append(
+                block_id=response["id"],
+                children=batch,
+            )
+        
+        return {
+            "id": response["id"],
+            "title": title,
+            "url": response.get("url", ""),
+            "created": True,
+        }
+        
+    except Exception as e:
+        logger.error(f"Error creando knowledge pill: {e}")
+        return {"error": str(e)}
+
+
+# =============================================================================
 # HERRAMIENTAS DE CRM
 # =============================================================================
 
@@ -468,6 +592,7 @@ def setup_notion_workspace() -> dict[str, Any]:
         settings.notion.crm_database_id = ids["crm"]
         settings.notion.finance_database_id = ids["finance"]
         settings.notion.goals_database_id = ids["goals"]
+        settings.notion.pills_database_id = ids["pills"]
         
         return {
             "success": True, 
@@ -491,7 +616,7 @@ def create_notion_tasks_tools() -> list:
 
 def create_notion_journal_tools() -> list:
     """Herramientas de Journal."""
-    return [create_journal_entry]
+    return [create_journal_entry, create_knowledge_pill]
 
 
 def create_notion_crm_tools() -> list:
@@ -511,6 +636,7 @@ def create_notion_tools() -> list:
         create_task,
         update_task_status,
         create_journal_entry,
+        create_knowledge_pill,
         search_contacts,
         add_contact,
         setup_notion_workspace,
