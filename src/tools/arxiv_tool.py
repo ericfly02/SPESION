@@ -105,16 +105,16 @@ def get_arxiv_paper(arxiv_id: str) -> dict[str, Any]:
 
 @tool
 def get_recent_papers(
-    category: str = "cs.AI",
+    categories: list[str] | None = None,
     days: int = 7,
-    max_results: int = 10,
+    max_results: int = 15,
 ) -> list[dict[str, Any]]:
-    """Obtiene papers recientes de una categoría.
+    """Obtiene papers recientes de múltiples categorías.
     
     Args:
-        category: Categoría de ArXiv (default 'cs.AI')
+        categories: Lista de categorías (default: ['cs.AI', 'q-bio.NC', 'q-fin.GN', 'econ.GN'])
         days: Papers de los últimos N días
-        max_results: Número máximo de resultados
+        max_results: Número máximo de resultados TOTALES
         
     Returns:
         Lista de papers recientes
@@ -122,12 +122,16 @@ def get_recent_papers(
     try:
         import arxiv
         from datetime import datetime, timedelta
+        import random
         
-        # ArXiv no soporta búsqueda por fecha directamente,
-        # así que buscamos por categoría y filtramos
+        target_categories = categories or ["cs.AI", "cs.LG", "q-bio.NC", "q-fin.GN", "econ.GN"]
+        
+        # Construir query OR
+        cat_query = " OR ".join([f"cat:{cat}" for cat in target_categories])
+        
         search = arxiv.Search(
-            query=f"cat:{category}",
-            max_results=max_results * 3,  # Pedir más para filtrar
+            query=cat_query,
+            max_results=max_results * 2,  # Pedir más para filtrar y mezclar
             sort_by=arxiv.SortCriterion.SubmittedDate,
         )
         
@@ -143,13 +147,15 @@ def get_recent_papers(
                     "authors": [a.name for a in paper.authors[:3]],
                     "published": paper.published.strftime("%Y-%m-%d"),
                     "arxiv_id": paper.entry_id.split("/")[-1],
+                    "pdf_url": paper.pdf_url,
                     "summary": paper.summary[:300] + "...",
+                    "category": paper.primary_category,
                 })
-            
-            if len(results) >= max_results:
-                break
         
-        return results
+        # Mezclar para variedad si hay muchos de una sola categoría
+        # (Aunque sort por fecha ya mezcla un poco)
+        
+        return results[:max_results]
         
     except Exception as e:
         logger.error(f"Error obteniendo papers recientes: {e}")
