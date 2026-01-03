@@ -125,15 +125,38 @@ class BaseAgent(ABC):
         """
         messages = [SystemMessage(content=self.system_prompt)]
         
-        # Añadir contexto RAG si existe
+        # 1. Recuperar contexto RAG automáticamente basado en el último mensaje
+        last_human_message = None
+        for msg in reversed(state.get("messages", [])):
+            if isinstance(msg, HumanMessage):
+                last_human_message = msg.content
+                break
+        
+        if last_human_message:
+            try:
+                from src.services.rag_service import get_rag_service
+                rag = get_rag_service()
+                # Buscar contexto relevante
+                context_docs = rag.retrieve_context(str(last_human_message), k=3)
+                
+                if context_docs:
+                    context_str = "\n\n".join(context_docs)
+                    # Inyectar contexto ANTES del historial
+                    messages.append(SystemMessage(
+                        content=f"## MEMORIA A LARGO PLAZO (Contexto Recuperado):\n{context_str}\n\nUsa esta información para personalizar tu respuesta y recordar detalles pasados."
+                    ))
+            except Exception as e:
+                logger.warning(f"No se pudo recuperar contexto RAG: {e}")
+
+        # 2. Añadir contexto explícito del estado si existe (legacy)
         if state.get("retrieved_context"):
             context = "\n\n".join(state["retrieved_context"])
             context_message = HumanMessage(
-                content=f"[Contexto relevante de la memoria]:\n{context}"
+                content=f"[Contexto adicional]:\n{context}"
             )
             messages.append(context_message)
         
-        # Añadir historial de mensajes (últimos N para no exceder contexto)
+        # 3. Añadir historial de mensajes
         recent_messages = state.get("messages", [])[-10:]
         messages.extend(recent_messages)
         
@@ -166,6 +189,21 @@ class BaseAgent(ABC):
         else:
             state["requires_tool_execution"] = False
         
+        # Guardar interacción en memoria RAG
+        if state["messages"] and isinstance(state["messages"][-1], HumanMessage):
+             try:
+                from src.services.rag_service import get_rag_service
+                rag = get_rag_service()
+                user_msg = state["messages"][-1].content
+                # Solo guardar si es relevante y no muy corto
+                if len(str(user_msg)) > 10:
+                    rag.add_memory(
+                        content=f"User: {user_msg}\nAssistant ({self.name}): {response.content}",
+                        metadata={"agent": self.name, "type": "conversation"}
+                    )
+             except Exception as e:
+                logger.warning(f"No se pudo guardar memoria RAG: {e}")
+
         return state
     
     async def ainvoke(self, state: AgentState) -> AgentState:

@@ -459,14 +459,18 @@ O simplemente escríbeme lo que necesites."""
 
     async def send_scholar_daily_summary(self, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Envía el resumen diario de Scholar."""
-        # Obtener chat_id (asumimos el primer usuario permitido o guardado)
-        # Por ahora usaremos self.allowed_users si existe
-        if not self.allowed_users:
-            logger.warning("No hay usuarios configurados para el resumen diario.")
+        # Si no hay usuarios en allowed_users, intentar obtenerlos de las variables de entorno
+        target_chat_id = None
+        
+        if self.allowed_users:
+            target_chat_id = self.allowed_users[0]
+        else:
+            # Fallback: intentar leer de variable de entorno directa o log error
+            # Para este caso, si el usuario ya ha interactuado, podríamos guardar su chat_id en DB
+            # Pero por simplicidad, asumiremos que se debe configurar en .env
+            logger.warning("No hay usuarios configurados en TELEGRAM_ALLOWED_USER_IDS para el resumen diario.")
             return
 
-        target_chat_id = self.allowed_users[0] # Enviar al primer usuario (Eric)
-        
         logger.info(f"Ejecutando resumen diario de Scholar para {target_chat_id}")
         
         try:
