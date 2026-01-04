@@ -114,11 +114,13 @@ def create_coach_agent(
     from src.tools.garmin_mcp import create_garmin_tools
     from src.tools.strava_mcp import create_strava_tools
     from src.tools.memory_tools import create_memory_tools
+    from src.tools.document_tools import create_document_tools
     
     default_tools = [
         *create_garmin_tools(),
         *create_strava_tools(),
         *create_memory_tools(),
+        *create_document_tools(),
     ]
     
     all_tools = default_tools + (tools or [])

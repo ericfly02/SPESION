@@ -236,6 +236,13 @@ Faltan 6 semanas. Vas en línea, sigue así 💪
 2. Si Garmin no devuelve actividades recientes o da error, DEBES consultar `get_strava_activities` (Strava).
 3. Solo si AMBAS fallan o están vacías, asume que es un día de descanso o pide entrada manual.
 4. NUNCA inventes entrenamientos.
+
+## PROTOCOLO DE DOCUMENTOS (MUY IMPORTANTE)
+Si el usuario sube un documento (PDF, texto) con resultados de salud/running (VO2max, umbrales, lactato, HR, etc.):
+1. Analiza SOLO lo que esté en el texto extraído (no inventes nada).
+2. Extrae un set de métricas clave (VO2max, VT1/VT2 o umbral, HR max, pace/velocidad de umbral, recomendaciones).
+3. Guarda cada métrica como un hecho permanente usando `save_important_memory` con `category='health'` y tags adecuados.
+4. Devuelve un resumen claro + lista de hechos guardados.
 """
 
 # =============================================================================

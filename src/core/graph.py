@@ -329,6 +329,9 @@ class SpesionAssistant:
         """Inicializa el asistente."""
         self.graph = create_spesion_graph()
         self._session_counter = 0
+        # Historial por usuario para dar contexto conversacional real (además del RAG)
+        self._history: dict[str, list] = {}
+        self._max_history_messages = 20
     
     def chat(
         self,
@@ -348,7 +351,7 @@ class SpesionAssistant:
         Returns:
             Respuesta del asistente
         """
-        from langchain_core.messages import HumanMessage
+        from langchain_core.messages import AIMessage, HumanMessage
         
         # Crear estado inicial
         self._session_counter += 1
@@ -360,8 +363,9 @@ class SpesionAssistant:
             telegram_chat_id=telegram_chat_id,
         )
         
-        # Añadir mensaje del usuario
-        state["messages"] = [HumanMessage(content=message)]
+        # Añadir historial + mensaje del usuario (contexto conversacional real)
+        history = self._history.get(user_id, [])
+        state["messages"] = [*history, HumanMessage(content=message)]
         state["original_query"] = message
         state["is_voice_message"] = is_voice
         
@@ -374,10 +378,18 @@ class SpesionAssistant:
                 # Buscar el último mensaje con contenido real
                 for msg in reversed(result["messages"]):
                     if hasattr(msg, "content") and msg.content and isinstance(msg.content, str):
+                        # Persistir en historial
+                        history = state["messages"][-self._max_history_messages :]
+                        history.append(AIMessage(content=msg.content))
+                        self._history[user_id] = history[-self._max_history_messages :]
                         return msg.content
                 
                 last = result["messages"][-1]
-                return str(last.content) if hasattr(last, "content") else "..."
+                final = str(last.content) if hasattr(last, "content") else "..."
+                history = state["messages"][-self._max_history_messages :]
+                history.append(AIMessage(content=final))
+                self._history[user_id] = history[-self._max_history_messages :]
+                return final
             
             return "No pude procesar tu mensaje. (Respuesta vacía)"
             
@@ -393,7 +405,7 @@ class SpesionAssistant:
         is_voice: bool = False,
     ) -> str:
         """Versión asíncrona de chat."""
-        from langchain_core.messages import HumanMessage
+        from langchain_core.messages import AIMessage, HumanMessage
         
         self._session_counter += 1
         session_id = f"{user_id}_{self._session_counter}"
@@ -404,7 +416,8 @@ class SpesionAssistant:
             telegram_chat_id=telegram_chat_id,
         )
         
-        state["messages"] = [HumanMessage(content=message)]
+        history = self._history.get(user_id, [])
+        state["messages"] = [*history, HumanMessage(content=message)]
         state["original_query"] = message
         state["is_voice_message"] = is_voice
         
@@ -414,10 +427,17 @@ class SpesionAssistant:
             if result.get("messages"):
                 for msg in reversed(result["messages"]):
                     if hasattr(msg, "content") and msg.content and isinstance(msg.content, str):
+                        history = state["messages"][-self._max_history_messages :]
+                        history.append(AIMessage(content=msg.content))
+                        self._history[user_id] = history[-self._max_history_messages :]
                         return msg.content
                 
                 last = result["messages"][-1]
-                return str(last.content) if hasattr(last, "content") else "..."
+                final = str(last.content) if hasattr(last, "content") else "..."
+                history = state["messages"][-self._max_history_messages :]
+                history.append(AIMessage(content=final))
+                self._history[user_id] = history[-self._max_history_messages :]
+                return final
             
             return "No pude procesar tu mensaje. (Respuesta vacía)"
             

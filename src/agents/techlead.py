@@ -118,10 +118,12 @@ def create_techlead_agent(
     """
     from src.tools.github_mcp import create_github_tools
     from src.tools.code_sandbox import create_sandbox_tools
+    from src.tools.document_tools import create_document_tools
     
     default_tools = [
         *create_github_tools(),
         *create_sandbox_tools(),
+        *create_document_tools(),
     ]
     
     all_tools = default_tools + (tools or [])

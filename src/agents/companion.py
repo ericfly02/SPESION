@@ -243,8 +243,9 @@ def create_companion_agent(
     """
     from src.tools.notion_mcp import create_notion_journal_tools
     from src.tools.memory_tools import create_memory_tools
+    from src.tools.image_tools import create_image_tools
     
-    default_tools = create_notion_journal_tools() + create_memory_tools()
+    default_tools = create_notion_journal_tools() + create_memory_tools() + create_image_tools()
     all_tools = default_tools + (tools or [])
     
     return CompanionAgent(llm=llm, tools=all_tools)

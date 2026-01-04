@@ -150,10 +150,12 @@ def create_connector_agent(
     """
     from src.tools.notion_mcp import create_notion_crm_tools
     from src.tools.search_tool import create_search_tools
+    from src.tools.image_tools import create_image_tools
     
     default_tools = [
         *create_notion_crm_tools(),
         *create_search_tools(),
+        *create_image_tools(),
     ]
     
     all_tools = default_tools + (tools or [])

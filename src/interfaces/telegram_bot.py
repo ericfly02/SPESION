@@ -399,6 +399,88 @@ O simplemente escríbeme lo que necesites."""
             await update.message.reply_text(
                 f"Error procesando el audio: {str(e)}"
             )
+
+    async def handle_photo_message(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+    ) -> None:
+        """Handler para fotos (screenshots). Extrae texto via OCR y da feedback."""
+        if not self._check_user_allowed(update.effective_user.id):
+            return
+
+        await self._send_typing(update)
+
+        try:
+            if not update.message.photo:
+                return
+
+            # Descargar la foto de mayor resolución
+            photo = update.message.photo[-1]
+            file = await context.bot.get_file(photo.file_id)
+
+            temp_dir = Path("./data/uploads")
+            temp_dir.mkdir(parents=True, exist_ok=True)
+
+            file_path = temp_dir / f"{photo.file_id}.jpg"
+            await file.download_to_drive(file_path)
+
+            await update.message.reply_text("🖼️ Screenshot recibido. Leyendo texto...")
+
+            extracted_text = ""
+            extraction_error = None
+            try:
+                from src.tools.image_tools import extract_text_from_image
+
+                result = extract_text_from_image.invoke(
+                    {"file_path": str(file_path.absolute()), "lang": "spa+eng"}
+                )
+                if isinstance(result, dict) and result.get("ok"):
+                    extracted_text = str(result.get("text") or "")
+                else:
+                    extraction_error = (
+                        result.get("error") if isinstance(result, dict) else "Unknown OCR error"
+                    )
+            except Exception as e_ocr:
+                extraction_error = str(e_ocr)
+
+            caption = update.message.caption or ""
+            hint = (
+                "El usuario ha subido un screenshot de un chat.\n"
+                "Tarea: ayudarle a responder (a una chica/amigo), con psicología práctica.\n"
+                "- No inventes mensajes que no ves.\n"
+                "- Primero resume el contexto del chat.\n"
+                "- Luego propone 2-3 respuestas: (1) directa, (2) juguetona, (3) madura/empática.\n"
+                "- Pregunta UNA aclaración si falta una pieza crítica (por ejemplo, objetivo del usuario).\n"
+            )
+
+            if extraction_error:
+                payload = (
+                    f"{hint}\n"
+                    f"Nota del usuario: {caption}\n"
+                    f"ERROR OCR: {extraction_error}\n"
+                    "Pide al usuario que re-subiera el screenshot con más zoom o mejor calidad.\n"
+                )
+            else:
+                payload = (
+                    f"{hint}\n"
+                    f"Nota del usuario: {caption}\n\n"
+                    "=== TEXTO OCR (puede contener errores) ===\n"
+                    f"{extracted_text}\n"
+                    "=== FIN ===\n"
+                )
+
+            response = await self.assistant.achat(
+                message=payload,
+                user_id=str(update.effective_user.id),
+                telegram_chat_id=update.effective_chat.id,
+            )
+
+            await self._reply_safe(update, response)
+
+        except Exception as e:
+            logger.error(f"Error procesando foto: {e}")
+            await update.message.reply_text(f"Error procesando la imagen: {e}")
     
     async def handle_document_message(
         self,
@@ -423,16 +505,61 @@ O simplemente escríbeme lo que necesites."""
             await file.download_to_drive(file_path)
             
             await update.message.reply_text(f"📂 Archivo recibido: {document.file_name}. Procesando...")
-            
-            # Notificar al asistente
-            msg = f"El usuario ha subido un archivo en la ruta: {file_path.absolute()}. Si es un CSV de finanzas, úsalo para actualizar el portfolio. Si es otro documento, analízalo si es relevante."
-            
+
+            # 1) Extraer texto del documento (para que el LLM tenga algo real que analizar)
+            extracted_text = ""
+            extraction_error = None
+            try:
+                from src.tools.document_tools import extract_text_from_document
+
+                result = extract_text_from_document.invoke(
+                    {"file_path": str(file_path.absolute()), "max_chars": 30000}
+                )
+                if isinstance(result, dict) and result.get("ok"):
+                    extracted_text = str(result.get("text") or "")
+                else:
+                    extraction_error = (
+                        result.get("error") if isinstance(result, dict) else "Unknown extraction error"
+                    )
+            except Exception as e_extract:
+                extraction_error = str(e_extract)
+
+            # 2) Construir mensaje enriquecido al asistente
+            user_caption = update.message.caption or ""
+            hint = (
+                "El usuario ha subido un documento. Analízalo con cuidado, SIN inventar datos.\n"
+                "- Si es un informe de salud/running (VO2, umbrales, lactato, etc.): "
+                "extrae métricas clave y GUARDA los hechos con `save_important_memory` (category='health').\n"
+                "- Si es de finanzas: detecta si es CSV o texto de reporte y propone importación.\n"
+                "- Responde con un resumen claro + los datos que has guardado.\n"
+            )
+
+            if extraction_error:
+                doc_payload = (
+                    f"{hint}\n"
+                    f"Archivo: {file_path.absolute()}\n"
+                    f"Nombre: {document.file_name}\n"
+                    f"Nota del usuario: {user_caption}\n"
+                    f"ERROR extrayendo texto: {extraction_error}\n"
+                    "Si el PDF es escaneado (imagen), necesitaremos OCR (lo añadiremos si lo confirmas).\n"
+                )
+            else:
+                doc_payload = (
+                    f"{hint}\n"
+                    f"Archivo: {file_path.absolute()}\n"
+                    f"Nombre: {document.file_name}\n"
+                    f"Nota del usuario: {user_caption}\n\n"
+                    "=== TEXTO EXTRAÍDO (puede estar truncado) ===\n"
+                    f"{extracted_text}\n"
+                    "=== FIN ===\n"
+                )
+
             response = await self.assistant.achat(
-                message=msg,
+                message=doc_payload,
                 user_id=str(update.effective_user.id),
                 telegram_chat_id=update.effective_chat.id,
             )
-            
+
             await self._reply_safe(update, response)
             
         except Exception as e:
@@ -479,6 +606,10 @@ O simplemente escríbeme lo que necesites."""
         app.add_handler(MessageHandler(
             filters.VOICE,
             self.handle_voice_message,
+        ))
+        app.add_handler(MessageHandler(
+            filters.PHOTO,
+            self.handle_photo_message,
         ))
         app.add_handler(MessageHandler(
             filters.Document.ALL,
