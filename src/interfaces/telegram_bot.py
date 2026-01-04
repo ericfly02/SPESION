@@ -400,6 +400,45 @@ O simplemente escríbeme lo que necesites."""
                 f"Error procesando el audio: {str(e)}"
             )
     
+    async def handle_document_message(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+    ) -> None:
+        """Handler para documentos (CSV, PDF, etc)."""
+        if not self._check_user_allowed(update.effective_user.id):
+            return
+        
+        await self._send_typing(update)
+        
+        try:
+            document = update.message.document
+            file = await context.bot.get_file(document.file_id)
+            
+            # Crear directorio temporal
+            temp_dir = Path("./data/uploads")
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            
+            file_path = temp_dir / document.file_name
+            await file.download_to_drive(file_path)
+            
+            await update.message.reply_text(f"📂 Archivo recibido: {document.file_name}. Procesando...")
+            
+            # Notificar al asistente
+            msg = f"El usuario ha subido un archivo en la ruta: {file_path.absolute()}. Si es un CSV de finanzas, úsalo para actualizar el portfolio. Si es otro documento, analízalo si es relevante."
+            
+            response = await self.assistant.achat(
+                message=msg,
+                user_id=str(update.effective_user.id),
+                telegram_chat_id=update.effective_chat.id,
+            )
+            
+            await self._reply_safe(update, response)
+            
+        except Exception as e:
+            logger.error(f"Error procesando documento: {e}")
+            await update.message.reply_text(f"Error procesando el archivo: {e}")
+
     async def handle_error(
         self,
         update: Update,
@@ -440,6 +479,10 @@ O simplemente escríbeme lo que necesites."""
         app.add_handler(MessageHandler(
             filters.VOICE,
             self.handle_voice_message,
+        ))
+        app.add_handler(MessageHandler(
+            filters.Document.ALL,
+            self.handle_document_message,
         ))
         
         # Handler de errores

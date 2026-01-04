@@ -159,9 +159,10 @@ def create_tycoon_agent(
     Returns:
         Instancia configurada del TycoonAgent
     """
-    from src.tools.finance_tool import create_finance_tools
+    from src.tools.finance_tools import create_finance_tools
+    from src.tools.notion_mcp import create_notion_finance_tools
     
-    default_tools = create_finance_tools()
+    default_tools = create_finance_tools() + create_notion_finance_tools()
     all_tools = default_tools + (tools or [])
     
     return TycoonAgent(llm=llm, tools=all_tools)

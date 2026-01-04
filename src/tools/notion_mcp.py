@@ -763,5 +763,141 @@ def create_notion_tools() -> list:
         search_contacts,
         add_contact,
         setup_notion_workspace,
+        add_portfolio_holding,
+        get_portfolio_holdings,
     ]
+
+
+# =============================================================================
+# HERRAMIENTAS DE FINANZAS
+# =============================================================================
+
+@tool
+def add_portfolio_holding(
+    ticker: str,
+    amount: float,
+    quantity: float,
+    type: str,
+    category: str,
+    current_price: float | None = None,
+) -> dict[str, Any]:
+    """Añade o actualiza una posición en el portfolio de finanzas.
+    
+    Args:
+        ticker: Símbolo del activo (e.g., 'AAPL', 'BTC', 'VWCE')
+        amount: Valor total en Euros
+        quantity: Cantidad de acciones/tokens
+        type: Tipo ('ETF', 'Stock', 'Crypto', 'Cash')
+        category: Categoría ('Core', 'Thematic', 'Speculative')
+        current_price: Precio unitario actual (opcional)
+        
+    Returns:
+        Dict con el resultado
+    """
+    client = _get_notion_client()
+    if client is None:
+        return {"error": "Notion no disponible"}
+    
+    from src.core.config import settings
+    if not settings.notion.finance_database_id:
+        return {"error": "Finance database ID no configurado"}
+    
+    try:
+        # Buscar si ya existe para actualizar
+        existing = client.databases.query(
+            database_id=settings.notion.finance_database_id,
+            filter={
+                "property": "Ticker",
+                "title": {"equals": ticker}
+            }
+        )
+        
+        today = datetime.now().strftime("%Y-%m-%d")
+        
+        properties = {
+            "Ticker": {"title": [{"text": {"content": ticker}}]},
+            "Amount": {"number": float(amount)},
+            "Quantity": {"number": float(quantity)},
+            "Type": {"select": {"name": type}},
+            "Category": {"select": {"name": category}},
+            "Last Updated": {"date": {"start": today}},
+        }
+        
+        # Calcular precio promedio si no se da
+        if quantity > 0:
+            avg_price = amount / quantity
+            properties["Avg Price"] = {"number": avg_price}
+            
+        if current_price:
+            properties["Current Price"] = {"number": float(current_price)}
+        
+        if existing["results"]:
+            # Actualizar
+            page_id = existing["results"][0]["id"]
+            client.pages.update(page_id=page_id, properties=properties)
+            action = "updated"
+        else:
+            # Crear
+            page_id = client.pages.create(
+                parent={"database_id": settings.notion.finance_database_id},
+                properties=properties
+            )["id"]
+            action = "created"
+            
+        return {
+            "id": page_id,
+            "ticker": ticker,
+            "action": action,
+            "success": True
+        }
+        
+    except Exception as e:
+        logger.error(f"Error gestionando holding financiero: {e}")
+        return {"error": str(e)}
+
+@tool
+def get_portfolio_holdings() -> list[dict[str, Any]]:
+    """Obtiene todas las posiciones del portfolio.
+    
+    Returns:
+        Lista de holdings
+    """
+    client = _get_notion_client()
+    if client is None:
+        return [{"error": "Notion no disponible"}]
+    
+    from src.core.config import settings
+    if not settings.notion.finance_database_id:
+        return [{"error": "Finance database ID no configurado"}]
+    
+    try:
+        response = client.databases.query(
+            database_id=settings.notion.finance_database_id,
+        )
+        
+        holdings = []
+        for page in response.get("results", []):
+            props = page.get("properties", {})
+            
+            ticker_prop = props.get("Ticker", {}).get("title", [])
+            ticker = ticker_prop[0]["plain_text"] if ticker_prop else "Unknown"
+            
+            holdings.append({
+                "ticker": ticker,
+                "amount": props.get("Amount", {}).get("number", 0),
+                "quantity": props.get("Quantity", {}).get("number", 0),
+                "type": props.get("Type", {}).get("select", {}).get("name", ""),
+                "category": props.get("Category", {}).get("select", {}).get("name", ""),
+                "current_price": props.get("Current Price", {}).get("number", 0),
+            })
+            
+        return holdings
+        
+    except Exception as e:
+        logger.error(f"Error obteniendo holdings: {e}")
+        return [{"error": str(e)}]
+
+def create_notion_finance_tools() -> list:
+    """Herramientas de Finanzas."""
+    return [add_portfolio_holding, get_portfolio_holdings]
 

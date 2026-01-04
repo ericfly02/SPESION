@@ -242,8 +242,9 @@ def create_companion_agent(
         Instancia configurada del CompanionAgent
     """
     from src.tools.notion_mcp import create_notion_journal_tools
+    from src.tools.memory_tools import create_memory_tools
     
-    default_tools = create_notion_journal_tools()
+    default_tools = create_notion_journal_tools() + create_memory_tools()
     all_tools = default_tools + (tools or [])
     
     return CompanionAgent(llm=llm, tools=all_tools)
