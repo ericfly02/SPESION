@@ -3,12 +3,100 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 from typing import Any
 
 from langchain_core.tools import tool
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_markdown_text(text: str) -> list[dict[str, Any]]:
+    """Convierte texto con Markdown simple a Rich Text de Notion.
+    Soporta: **negrita**, [link](url)
+    """
+    # Regex para detectar links: [texto](url)
+    link_pattern = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
+    # Regex para detectar negrita: **texto**
+    bold_pattern = re.compile(r'\*\*([^*]+)\*\*')
+    
+    # Estrategia: 
+    # 1. Encontrar todas las coincidencias de ambos tipos
+    # 2. Ordenarlas por posición
+    # 3. Iterar y construir la lista de rich_text
+    
+    rich_text = []
+    current_pos = 0
+    
+    # Combinamos todos los tokens de interés
+    tokens = []
+    
+    for match in link_pattern.finditer(text):
+        tokens.append({
+            "start": match.start(),
+            "end": match.end(),
+            "type": "link",
+            "text": match.group(1),
+            "url": match.group(2)
+        })
+        
+    for match in bold_pattern.finditer(text):
+        # Evitar solapamientos simples (prioridad a links si se solapan, o simplemente ignorar)
+        # Por simplicidad, asumimos que no hay anidamiento complejo link+bold
+        tokens.append({
+            "start": match.start(),
+            "end": match.end(),
+            "type": "bold",
+            "text": match.group(1)
+        })
+    
+    # Ordenar por posición de inicio
+    tokens.sort(key=lambda x: x["start"])
+    
+    # Filtrar solapamientos (simple: si empieza antes de que acabe el anterior, skip)
+    filtered_tokens = []
+    last_end = -1
+    for t in tokens:
+        if t["start"] >= last_end:
+            filtered_tokens.append(t)
+            last_end = t["end"]
+            
+    # Construir rich_text
+    for token in filtered_tokens:
+        # Texto previo al token
+        if token["start"] > current_pos:
+            rich_text.append({
+                "type": "text",
+                "text": {"content": text[current_pos:token["start"]]}
+            })
+            
+        # El token en sí
+        if token["type"] == "link":
+            rich_text.append({
+                "type": "text",
+                "text": {
+                    "content": token["text"],
+                    "link": {"url": token["url"]}
+                }
+            })
+        elif token["type"] == "bold":
+            rich_text.append({
+                "type": "text",
+                "text": {"content": token["text"]},
+                "annotations": {"bold": True}
+            })
+            
+        current_pos = token["end"]
+        
+    # Texto restante final
+    if current_pos < len(text):
+        rich_text.append({
+            "type": "text",
+            "text": {"content": text[current_pos:]}
+        })
+        
+    return rich_text if rich_text else [{"type": "text", "text": {"content": text}}]
 
 
 def _get_notion_client():
@@ -377,26 +465,57 @@ def create_knowledge_pill(
             else:
                 # Detectar encabezados básicos
                 if part.startswith("# "):
+                    clean_text = part[2:].strip()
                     blocks.append({
                         "type": "heading_1",
-                        "heading_1": {"rich_text": [{"text": {"content": part[2:]}}]}
+                        "heading_1": {"rich_text": _parse_markdown_text(clean_text)}
                     })
                 elif part.startswith("## "):
+                    clean_text = part[3:].strip()
                     blocks.append({
                         "type": "heading_2",
-                        "heading_2": {"rich_text": [{"text": {"content": part[3:]}}]}
+                        "heading_2": {"rich_text": _parse_markdown_text(clean_text)}
                     })
                 elif part.startswith("### "):
+                    clean_text = part[4:].strip()
                     blocks.append({
                         "type": "heading_3",
-                        "heading_3": {"rich_text": [{"text": {"content": part[4:]}}]}
+                        "heading_3": {"rich_text": _parse_markdown_text(clean_text)}
                     })
+                # Detectar listas (bullets)
+                elif part.strip().startswith("- ") or part.strip().startswith("* "):
+                    # Manejar múltiples items si el bloque contiene saltos de línea internos
+                    list_items = part.split("\n")
+                    for item in list_items:
+                        item = item.strip()
+                        if item.startswith("- ") or item.startswith("* "):
+                            clean_text = item[2:].strip()
+                            blocks.append({
+                                "type": "bulleted_list_item",
+                                "bulleted_list_item": {"rich_text": _parse_markdown_text(clean_text)}
+                            })
+                        else:
+                            # Si hay líneas sin bullet en medio, tratarlas como párrafo indentado o normal
+                            blocks.append({
+                                "type": "paragraph",
+                                "paragraph": {"rich_text": _parse_markdown_text(item)}
+                            })
                 else:
-                    blocks.append({
-                        "type": "paragraph",
-                        "paragraph": {"rich_text": [{"text": {"content": part}}]}
-                    })
-        
+                    # Párrafo normal
+                    # Manejar líneas internas que podrían ser listas si el bloque no se separó por \n\n
+                    lines = part.split("\n")
+                    for line in lines:
+                        if line.strip().startswith("- ") or line.strip().startswith("* "):
+                             blocks.append({
+                                "type": "bulleted_list_item",
+                                "bulleted_list_item": {"rich_text": _parse_markdown_text(line.strip()[2:])}
+                            })
+                        else:
+                             blocks.append({
+                                "type": "paragraph",
+                                "paragraph": {"rich_text": _parse_markdown_text(line)}
+                            })
+
         # Subir bloques en lotes de 100 (límite de Notion API)
         for i in range(0, len(blocks), 100):
             batch = blocks[i:i+100]
