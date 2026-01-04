@@ -46,6 +46,51 @@ def _get_garmin_client():
         return None
 
 
+def _normalize_date(date_str: str | None) -> str:
+    """Normaliza fechas humanas a YYYY-MM-DD.
+
+    Acepta:
+    - None -> hoy
+    - 'hoy'/'today'
+    - 'ayer'/'yesterday'
+    - 'mañana'/'tomorrow'
+    - formatos parseables (e.g. 2026-01-04, 04/01/2026, 4 Jan 2026)
+    """
+    if not date_str:
+        return datetime.now().strftime("%Y-%m-%d")
+
+    raw = str(date_str).strip()
+    if not raw:
+        return datetime.now().strftime("%Y-%m-%d")
+
+    low = raw.lower()
+    if low in {"hoy", "today"}:
+        return datetime.now().strftime("%Y-%m-%d")
+    if low in {"ayer", "yesterday"}:
+        return (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    if low in {"mañana", "manana", "tomorrow"}:
+        return (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    # Si ya viene en ISO, devolverlo tal cual
+    if len(raw) == 10 and raw[4] == "-" and raw[7] == "-":
+        # Validación rápida
+        try:
+            datetime.strptime(raw, "%Y-%m-%d")
+            return raw
+        except Exception:
+            pass
+
+    # Intentar parsear formatos comunes (dd/mm/yyyy, etc.)
+    try:
+        from dateutil import parser as date_parser
+
+        dt = date_parser.parse(raw, dayfirst=True, fuzzy=True)
+        return dt.strftime("%Y-%m-%d")
+    except Exception:
+        # Último recurso: hoy
+        return datetime.now().strftime("%Y-%m-%d")
+
+
 @tool
 def get_garmin_stats(date: str | None = None) -> dict[str, Any]:
     """Obtiene estadísticas de Garmin para una fecha.
@@ -61,7 +106,7 @@ def get_garmin_stats(date: str | None = None) -> dict[str, Any]:
         return {"error": "Garmin no disponible", "mock_data": _get_mock_garmin_stats()}
     
     try:
-        target_date = date or datetime.now().strftime("%Y-%m-%d")
+        target_date = _normalize_date(date)
         
         # Obtener múltiples métricas
         stats = {}
