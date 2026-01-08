@@ -46,6 +46,43 @@ class CoachAgent(BaseAgent):
         
         Actualiza el energy_level en el estado basado en los datos disponibles.
         """
+        # Prefetch de datos reales para evitar alucinaciones (Garmin/Strava)
+        try:
+            from langchain_core.messages import HumanMessage
+            from src.tools.garmin_mcp import get_garmin_stats, get_garmin_activities
+            from src.tools.strava_mcp import get_strava_activities
+
+            last_user = None
+            for msg in reversed(state.get("messages", [])):
+                if isinstance(msg, HumanMessage):
+                    last_user = str(msg.content).lower()
+                    break
+
+            if last_user:
+                stats_markers = {"hrv", "sueño", "sueno", "body battery", "recuperación", "recuperacion", "resting", "rhr"}
+                activity_markers = {"qué entreno", "que entreno", "entreno he", "actividad", "hecho hoy", "hice hoy", "hoy entrené", "hoy entrene"}
+
+                if any(k in last_user for k in stats_markers):
+                    gstats = get_garmin_stats.invoke({"date": "hoy"})
+                    state["retrieved_context"] = state.get("retrieved_context", []) + [
+                        f"[GARMIN_STATS_TODAY]: {gstats}",
+                    ]
+
+                if any(k in last_user for k in activity_markers):
+                    gacts = get_garmin_activities.invoke({"days": 1})
+                    # Fallback a Strava si Garmin no trae nada o devuelve error
+                    use_strava = (
+                        isinstance(gacts, list)
+                        and (len(gacts) == 0 or (len(gacts) == 1 and isinstance(gacts[0], dict) and gacts[0].get("error")))
+                    )
+                    sacts = get_strava_activities.invoke({"days": 1, "per_page": 10}) if use_strava else None
+                    ctx = [f"[GARMIN_ACTIVITIES_LAST_1_DAY]: {gacts}"]
+                    if sacts is not None:
+                        ctx.append(f"[STRAVA_ACTIVITIES_LAST_1_DAY]: {sacts}")
+                    state["retrieved_context"] = state.get("retrieved_context", []) + ctx
+        except Exception:
+            pass
+
         state = super().invoke(state)
         
         # Intentar actualizar energy_level si tenemos datos
@@ -115,12 +152,21 @@ def create_coach_agent(
     from src.tools.strava_mcp import create_strava_tools
     from src.tools.memory_tools import create_memory_tools
     from src.tools.document_tools import create_document_tools
+    from src.tools.notion_mcp import (
+        setup_trainings_database,
+        log_training_session,
+        get_training_for_date,
+    )
     
     default_tools = [
         *create_garmin_tools(),
         *create_strava_tools(),
         *create_memory_tools(),
         *create_document_tools(),
+        # Plan/registro de entrenos en Notion
+        setup_trainings_database,
+        log_training_session,
+        get_training_for_date,
     ]
     
     all_tools = default_tools + (tools or [])

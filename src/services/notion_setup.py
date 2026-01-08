@@ -18,7 +18,7 @@ class NotionSetupService:
         except ImportError:
             raise ImportError("notion-client not installed")
 
-    def initialize_workspace(self) -> dict[str, str]:
+    def initialize_workspace(self, *, overwrite_env: bool = False) -> dict[str, str]:
         """Creates the full SPESION workspace structure.
         
         Returns:
@@ -41,10 +41,50 @@ class NotionSetupService:
         ids["goals"] = self._create_goals_db(root_id)
         ids["pills"] = self._create_pills_db(root_id)
 
-        # 3. Update .env file
-        self._update_env_file(ids)
+        # 3. Update .env file (por defecto: NO sobrescribir IDs existentes)
+        self._update_env_file(ids, overwrite=overwrite_env)
         
         return ids
+
+    # -------------------------------------------------------------------------
+    # EXTRA DATABASES (NO requieren re-ejecutar todo el setup)
+    # -------------------------------------------------------------------------
+
+    def ensure_books_database(self, *, overwrite_env: bool = False) -> str:
+        """Crea (si falta) la DB de libros/reading list dentro del root page."""
+        root_page = self._create_root_page()
+        root_id = root_page["id"]
+
+        existing = self.client.search(
+            query="📚 Reading List",
+            filter={"property": "object", "value": "database"},
+        )
+        if existing.get("results"):
+            db_id = existing["results"][0]["id"]
+            self._update_env_file({"books": db_id}, overwrite=overwrite_env)
+            return db_id
+
+        db_id = self._create_books_db(root_id)
+        self._update_env_file({"books": db_id}, overwrite=overwrite_env)
+        return db_id
+
+    def ensure_trainings_database(self, *, overwrite_env: bool = False) -> str:
+        """Crea (si falta) la DB de entrenos semanales dentro del root page."""
+        root_page = self._create_root_page()
+        root_id = root_page["id"]
+
+        existing = self.client.search(
+            query="🏃 Weekly Trainings",
+            filter={"property": "object", "value": "database"},
+        )
+        if existing.get("results"):
+            db_id = existing["results"][0]["id"]
+            self._update_env_file({"trainings": db_id}, overwrite=overwrite_env)
+            return db_id
+
+        db_id = self._create_trainings_db(root_id)
+        self._update_env_file({"trainings": db_id}, overwrite=overwrite_env)
+        return db_id
 
     def _create_root_page(self) -> dict[str, Any]:
         """Creates the main dashboard page."""
@@ -346,8 +386,92 @@ class NotionSetupService:
             logger.error(f"Error creating Pills DB: {e}")
             raise
 
-    def _update_env_file(self, ids: dict[str, str]):
-        """Updates the .env file with new IDs."""
+    def _create_books_db(self, parent_id: str) -> str:
+        """Creates Books / Reading List DB."""
+        try:
+            db = self.client.databases.create(
+                parent={"type": "page_id", "page_id": parent_id},
+                title=[{"type": "text", "text": {"content": "📚 Reading List"}}],
+                initial_data_source={
+                    "properties": {
+                        "Name": {"type": "title", "title": {}},
+                        "Author": {"type": "rich_text", "rich_text": {}},
+                        "Status": {"type": "status", "status": {}},
+                        "Category": {"type": "multi_select", "multi_select": {}},
+                        "Priority": {"type": "select", "select": {"options": [
+                            {"name": "High", "color": "red"},
+                            {"name": "Medium", "color": "yellow"},
+                            {"name": "Low", "color": "blue"},
+                        ]}},
+                        "Start Date": {"type": "date", "date": {}},
+                        "Finish Date": {"type": "date", "date": {}},
+                        "Rating": {"type": "number", "number": {"format": "number"}},
+                        "URL": {"type": "url", "url": {}},
+                        "Notes": {"type": "rich_text", "rich_text": {}},
+                    }
+                },
+            )
+            logger.info(f"Created Books DB: {db['id']}")
+            return db["id"]
+        except Exception as e:
+            logger.error(f"Error creating Books DB: {e}")
+            raise
+
+    def _create_trainings_db(self, parent_id: str) -> str:
+        """Creates Weekly Trainings DB."""
+        try:
+            db = self.client.databases.create(
+                parent={"type": "page_id", "page_id": parent_id},
+                title=[{"type": "text", "text": {"content": "🏃 Weekly Trainings"}}],
+                initial_data_source={
+                    "properties": {
+                        "Name": {"type": "title", "title": {}},
+                        "Data": {"type": "date", "date": {}},
+                        "Dia": {"type": "select", "select": {"options": [
+                            {"name": "Dilluns", "color": "blue"},
+                            {"name": "Dimarts", "color": "blue"},
+                            {"name": "Dimecres", "color": "blue"},
+                            {"name": "Dijous", "color": "blue"},
+                            {"name": "Divendres", "color": "blue"},
+                            {"name": "Dissabte", "color": "blue"},
+                            {"name": "Diumenge", "color": "blue"},
+                        ]}},
+                        "Tipus entreno": {"type": "select", "select": {"options": [
+                            {"name": "Easy", "color": "green"},
+                            {"name": "Intervals", "color": "red"},
+                            {"name": "Tempo", "color": "orange"},
+                            {"name": "Long", "color": "yellow"},
+                            {"name": "Gym", "color": "purple"},
+                            {"name": "Rest", "color": "gray"},
+                        ]}},
+                        "Distància (km)": {"type": "number", "number": {"format": "number"}},
+                        "Temps (min)": {"type": "number", "number": {"format": "number"}},
+                        "Ritme (min/km)": {"type": "rich_text", "rich_text": {}},
+                        "Pulsacions": {"type": "number", "number": {"format": "number"}},
+                        "Zona": {"type": "select", "select": {"options": [
+                            {"name": "Z1", "color": "green"},
+                            {"name": "Z2", "color": "blue"},
+                            {"name": "Z3", "color": "yellow"},
+                            {"name": "Z4", "color": "orange"},
+                            {"name": "Z5", "color": "red"},
+                        ]}},
+                    }
+                },
+            )
+            logger.info(f"Created Trainings DB: {db['id']}")
+            return db["id"]
+        except Exception as e:
+            logger.error(f"Error creating Trainings DB: {e}")
+            raise
+
+    def _update_env_file(self, ids: dict[str, str], *, overwrite: bool = False) -> None:
+        """Updates the .env file with new IDs.
+
+        IMPORTANT:
+        - Por defecto NO sobrescribe IDs existentes para evitar que un setup accidental
+          cambie los IDs y rompa el sistema.
+        - Si overwrite=True, reemplaza los IDs existentes.
+        """
         env_path = ".env"
         
         # Map internal keys to env vars
@@ -358,35 +482,65 @@ class NotionSetupService:
             "finance": "NOTION_FINANCE_DATABASE_ID",
             "goals": "NOTION_GOALS_DATABASE_ID",
             "pills": "NOTION_PILLS_DATABASE_ID",
+            "books": "NOTION_BOOKS_DATABASE_ID",
+            "trainings": "NOTION_TRAININGS_DATABASE_ID",
         }
         
         try:
-            lines = []
+            lines: list[str] = []
             if os.path.exists(env_path):
-                with open(env_path, "r") as f:
+                with open(env_path, "r", encoding="utf-8") as f:
                     lines = f.readlines()
-            
-            # Helper to check if key exists
-            existing_keys = {line.split("=")[0].strip() for line in lines if "=" in line}
-            
-            new_lines = []
+
+            # Parse existing key->value (muy simple, preservamos comentarios/orden)
+            existing: dict[str, str] = {}
             for line in lines:
-                key = line.split("=")[0].strip()
-                # If this line is one of our keys, skip it (we'll append fresh ones)
-                if key not in key_map.values():
-                    new_lines.append(line)
-            
-            # Append new keys
-            new_lines.append("\n# Notion Databases (Auto-generated)\n")
+                if "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                existing[k.strip()] = v.strip()
+
+            # Decide qué claves actualizar
+            desired_updates: dict[str, str] = {}
             for internal_key, env_key in key_map.items():
-                if internal_key in ids:
-                    new_lines.append(f"{env_key}={ids[internal_key]}\n")
-            
-            # Write back
-            with open(env_path, "w") as f:
-                f.writelines(new_lines)
-                
-            logger.info("Updated .env file with new Database IDs.")
-            
+                if internal_key not in ids:
+                    continue
+                if overwrite or (env_key not in existing) or (existing.get(env_key, "").strip() == ""):
+                    desired_updates[env_key] = ids[internal_key]
+
+            if not desired_updates:
+                logger.info("No Notion env keys to update (already configured).")
+                return
+
+            # Reescribir líneas actualizando in-place si existen
+            updated_lines: list[str] = []
+            touched: set[str] = set()
+            for line in lines:
+                if "=" not in line:
+                    updated_lines.append(line)
+                    continue
+                k, _ = line.split("=", 1)
+                key = k.strip()
+                if key in desired_updates:
+                    updated_lines.append(f"{key}={desired_updates[key]}\n")
+                    touched.add(key)
+                else:
+                    updated_lines.append(line)
+
+            # Añadir las que no existían
+            missing_keys = [k for k in desired_updates.keys() if k not in touched and k not in existing]
+            if missing_keys:
+                updated_lines.append("\n# Notion Databases (Auto-generated)\n")
+                for k in missing_keys:
+                    updated_lines.append(f"{k}={desired_updates[k]}\n")
+
+            with open(env_path, "w", encoding="utf-8") as f:
+                f.writelines(updated_lines)
+
+            logger.info(
+                "Updated .env file with Notion Database IDs: "
+                + ", ".join(sorted(desired_updates.keys()))
+            )
+
         except Exception as e:
             logger.error(f"Failed to update .env file: {e}")

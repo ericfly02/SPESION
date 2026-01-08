@@ -128,6 +128,17 @@ class BaseAgent(ABC):
         
         system_content = f"📅 FECHA ACTUAL: {current_date}\n\n{self.system_prompt}"
         messages = [SystemMessage(content=system_content)]
+
+        # Guardrails globales anti-alucinación (aplica a TODOS los agentes)
+        # Nota: esto es deliberadamente redundante con prompts específicos.
+        messages.append(SystemMessage(content=
+            "## REGLAS CRÍTICAS (NO ALUCINAR)\n"
+            "- NO inventes hechos, números, nombres, reuniones, métricas, ni resultados.\n"
+            "- Si necesitas datos reales (calendario, Garmin/Strava, Notion, finanzas, etc.), USA herramientas.\n"
+            "- Si una herramienta devuelve error o no está disponible, DILO explícitamente y no lo compenses inventando.\n"
+            "- Si no tienes suficiente información, pregunta una aclaración concreta.\n"
+            "- Si el usuario pide algo que no puedes verificar, responde con incertidumbre explícita.\n"
+        ))
         
         # 1. Recuperar contexto RAG automáticamente basado en el último mensaje
         last_human_message = None
@@ -180,6 +191,13 @@ class BaseAgent(ABC):
         Returns:
             Estado actualizado
         """
+        # Capturar último mensaje del usuario ANTES de mutar state["messages"]
+        last_user_msg: str | None = None
+        for msg in reversed(state.get("messages", [])):
+            if isinstance(msg, HumanMessage):
+                last_user_msg = msg.content
+                break
+
         # Añadir nombre del agente al mensaje
         response.name = self.name
         
@@ -193,19 +211,17 @@ class BaseAgent(ABC):
         else:
             state["requires_tool_execution"] = False
         
-        # Guardar interacción en memoria RAG
-        if state["messages"] and isinstance(state["messages"][-1], HumanMessage):
-             try:
+        # Guardar interacción en memoria RAG (bugfix: antes comprobaba el último mensaje, que ya es AI)
+        if last_user_msg and len(str(last_user_msg)) > 10 and response.content:
+            try:
                 from src.services.rag_service import get_rag_service
+
                 rag = get_rag_service()
-                user_msg = state["messages"][-1].content
-                # Solo guardar si es relevante y no muy corto
-                if len(str(user_msg)) > 10:
-                    rag.add_memory(
-                        content=f"User: {user_msg}\nAssistant ({self.name}): {response.content}",
-                        metadata={"agent": self.name, "type": "conversation"}
-                    )
-             except Exception as e:
+                rag.add_memory(
+                    content=f"User: {last_user_msg}\nAssistant ({self.name}): {response.content}",
+                    metadata={"agent": self.name, "type": "conversation"},
+                )
+            except Exception as e:
                 logger.warning(f"No se pudo guardar memoria RAG: {e}")
 
         return state

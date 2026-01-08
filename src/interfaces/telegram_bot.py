@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import json
 from datetime import datetime, time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -21,6 +22,11 @@ if TYPE_CHECKING:
     from src.core.graph import SpesionAssistant
 
 logger = logging.getLogger(__name__)
+
+try:
+    from zoneinfo import ZoneInfo
+except Exception:  # pragma: no cover
+    ZoneInfo = None  # type: ignore
 
 
 class SpesionBot:
@@ -621,11 +627,31 @@ O simplemente escríbeme lo que necesites."""
         
         # JobQueue para tareas programadas (Scholar daily)
         if app.job_queue:
+            tz = ZoneInfo("Europe/Madrid") if ZoneInfo else None
+
             app.job_queue.run_daily(
                 self.send_scholar_daily_summary,
-                time=time(hour=10, minute=0), # 10:00 AM local
+                time=time(hour=9, minute=0, tzinfo=tz),  # 09:00 local (Europe/Madrid)
                 days=(0, 1, 2, 3, 4, 5, 6),
-                name="scholar_daily"
+                name="scholar_daily",
+                job_kwargs={
+                    "misfire_grace_time": 120,
+                    "coalesce": True,
+                    "max_instances": 1,
+                },
+            )
+
+            # Morning Brief (agenda + entreno + portfolio)
+            app.job_queue.run_daily(
+                self.send_morning_brief,
+                time=time(hour=8, minute=30, tzinfo=tz),  # 08:30 local
+                days=(0, 1, 2, 3, 4, 5, 6),
+                name="morning_brief",
+                job_kwargs={
+                    "misfire_grace_time": 300,
+                    "coalesce": True,
+                    "max_instances": 1,
+                },
             )
         
         self._app = app
@@ -665,12 +691,82 @@ O simplemente escríbeme lo que necesites."""
         logger.info(f"Ejecutando resumen diario de Scholar para {target_chat_id}")
         
         try:
-            # 1. Generar contenido (Texto plano, sin tool calls)
+            # 1) Preparar inputs (code-driven) para evitar alucinaciones y repetición
+            from src.tools.arxiv_tool import get_recent_papers
+            from src.tools.search_tool import search_news
+
+            cache_path = Path("data/scholar_sent_arxiv_ids.json")
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            sent_ids: set[str] = set()
+            try:
+                if cache_path.exists():
+                    payload = json.loads(cache_path.read_text(encoding="utf-8"))
+                    sent_ids = set(payload.get("ids", []))
+            except Exception:
+                sent_ids = set()
+
+            papers = get_recent_papers.invoke({
+                "days": 7,
+                "max_results": 25,
+                "categories": ["cs.AI", "cs.LG", "cs.CL", "q-bio.NC", "q-fin.GN", "econ.GN", "q-bio.QM"],
+            })
+            papers = [p for p in papers if isinstance(p, dict) and "error" not in p]
+            papers = [p for p in papers if p.get("arxiv_id") and p["arxiv_id"] not in sent_ids]
+            papers = papers[:12]
+
+            # Curación de noticias: evitar gadgets/laptops, priorizar economía/medicina/neuro/IA
+            raw_news: list[dict] = []
+            for q in [
+                "AI policy regulation foundation models 2026",
+                "neuroscience sleep cognition study 2026",
+                "medicine longevity clinical trial 2026",
+                "macroeconomics inflation central bank 2026",
+                "markets economy recession indicators 2026",
+            ]:
+                items = search_news.invoke({"query": q, "max_results": 5, "region": "es-es"})
+                if isinstance(items, list):
+                    raw_news.extend([x for x in items if isinstance(x, dict) and "error" not in x])
+
+            bad_kw = {"laptop", "portátil", "smartphone", "iphone", "ipad", "android", "wearable", "auriculares", "headphones"}
+            seen_urls: set[str] = set()
+            news: list[dict] = []
+            for n in raw_news:
+                title = str(n.get("title", "")).lower()
+                url = str(n.get("url", ""))
+                if not url or url in seen_urls:
+                    continue
+                if any(k in title for k in bad_kw):
+                    continue
+                seen_urls.add(url)
+                news.append(n)
+            news = news[:10]
+
+            # 2) Generar briefing SOLO a partir de estos inputs (anti-alucinación)
             response_text = await self.assistant.achat(
-                message="Genera mi resumen diario 'Super Aesthetic' de papers ArXiv y noticias tech importantes de hoy. Céntrate SOLO en generar el contenido en Markdown de alta calidad. No intentes guardarlo, solo dame el texto.",
+                message=(
+                    "Genera mi 'Scholar Daily Briefing' Super Aesthetic.\n\n"
+                    "REGLA: NO puedes añadir papers/noticias fuera de las listas. "
+                    "Si faltan temas, dilo.\n\n"
+                    f"PAPERS_JSON:\n{json.dumps(papers, ensure_ascii=False)}\n\n"
+                    f"NEWS_JSON:\n{json.dumps(news, ensure_ascii=False)}\n\n"
+                    "Requisitos: cubrir IA, neurociencia, medicina, economía/ciencia. "
+                    "Omitir gadgets (laptops, móviles)."
+                ),
                 user_id=str(target_chat_id),
                 telegram_chat_id=target_chat_id,
             )
+
+            # Persistir IDs para dedupe futuro
+            try:
+                new_ids = [p.get("arxiv_id") for p in papers if p.get("arxiv_id")]
+                merged = list((sent_ids | set(new_ids)))
+                merged = merged[-300:]  # mantener acotado
+                cache_path.write_text(
+                    json.dumps({"ids": merged, "updated_at": datetime.now().strftime("%Y-%m-%d")}, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+            except Exception:
+                pass
             
             # 2. Guardar en Notion manualmente (Código-driven para fiabilidad)
             final_message = f"🎓 **Scholar Daily Briefing**\n\n{response_text}"
@@ -709,6 +805,102 @@ O simplemente escríbeme lo que necesites."""
                 chat_id=target_chat_id,
                 text="Error generando el resumen diario."
             )
+
+    async def send_morning_brief(self, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Envía el brief de la mañana (agenda + entreno + portfolio) sin alucinar."""
+        target_chat_id = None
+        if self.allowed_users:
+            target_chat_id = self.allowed_users[0]
+        else:
+            logger.warning("No hay usuarios configurados en TELEGRAM_ALLOWED_USER_IDS para el morning brief.")
+            return
+
+        try:
+            from src.tools.calendar_mcp import get_today_agenda
+            from src.tools.notion_mcp import get_tasks, get_training_for_date, get_portfolio_holdings
+
+            today_str = datetime.now().strftime("%Y-%m-%d")
+
+            agenda = get_today_agenda.invoke({})
+            tasks = get_tasks.invoke({"limit": 50})
+            trainings = get_training_for_date.invoke({"date": today_str})
+            holdings = get_portfolio_holdings.invoke({})
+
+            # Filtrar tasks por due_date hoy
+            due_today = []
+            if isinstance(tasks, list):
+                for t in tasks:
+                    if isinstance(t, dict) and t.get("due_date") == today_str and (t.get("status") != "Done"):
+                        due_today.append(t)
+
+            # Portfolio stats simples
+            total_amount = 0.0
+            by_type: dict[str, float] = {}
+            if isinstance(holdings, list):
+                for h in holdings:
+                    if not isinstance(h, dict) or "error" in h:
+                        continue
+                    amt = float(h.get("amount") or 0)
+                    total_amount += amt
+                    t = h.get("type") or "Unknown"
+                    by_type[t] = by_type.get(t, 0.0) + amt
+
+            def pct(x: float) -> str:
+                return "—" if total_amount <= 0 else f"{(x/total_amount)*100:.0f}%"
+
+            # Formato (Telegram Markdown)
+            msg = f"""🌅 **Morning Brief** — {today_str}
+
+### 📅 Agenda de hoy
+"""
+            if isinstance(agenda, dict) and agenda.get("error"):
+                msg += f"- **Calendario**: {agenda['error']}\n"
+            else:
+                events = (agenda or {}).get("events", []) if isinstance(agenda, dict) else []
+                if not events:
+                    msg += "- No veo eventos hoy.\n"
+                else:
+                    for ev in events[:8]:
+                        msg += f"- {ev.get('title','(sin título)')} ({ev.get('start','?')} → {ev.get('end','?')})\n"
+                if isinstance(agenda, dict):
+                    msg += f"\n- **Meetings (h)**: {agenda.get('meeting_hours','?')} | **Free (h)**: {agenda.get('free_hours','?')}\n"
+
+            msg += "\n### ✅ Tasks (due hoy)\n"
+            if due_today:
+                for t in due_today[:8]:
+                    pr = t.get("priority") or ""
+                    proj = t.get("project") or ""
+                    msg += f"- {t.get('title','(sin título)')} {f'[{proj}]' if proj else ''} {f'({pr})' if pr else ''}\n"
+            else:
+                msg += "- No veo tasks con due date hoy.\n"
+
+            msg += "\n### 🏃 Entreno (hoy)\n"
+            if isinstance(trainings, list) and trainings and not trainings[0].get("error"):
+                tr = trainings[0]
+                msg += (
+                    f"- **{tr.get('type','')}** — {tr.get('distance_km','?')} km, "
+                    f"{tr.get('time_min','?')} min, {tr.get('pace','?')} | HR {tr.get('hr','?')} | {tr.get('zone','')}\n"
+                )
+            else:
+                # Si DB no está configurada, decirlo explícitamente
+                err = trainings[0].get("error") if isinstance(trainings, list) and trainings else None
+                msg += f"- {err or 'No hay entreno guardado para hoy.'}\n"
+
+            msg += "\n### 💰 Portfolio (snapshot)\n"
+            if total_amount <= 0:
+                if isinstance(holdings, list) and holdings and isinstance(holdings[0], dict) and holdings[0].get("error"):
+                    msg += f"- {holdings[0]['error']}\n"
+                else:
+                    msg += "- No hay holdings cargados.\n"
+            else:
+                msg += f"- **Total**: €{total_amount:,.0f}\n"
+                for k, v in sorted(by_type.items(), key=lambda kv: kv[1], reverse=True):
+                    msg += f"  - {k}: €{v:,.0f} ({pct(v)})\n"
+
+            await self._send_long_message(target_chat_id, msg, context)
+        except Exception as e:
+            logger.error(f"Error en morning brief: {e}")
+            await context.bot.send_message(chat_id=target_chat_id, text="Error generando el morning brief.")
 
     def run(self) -> None:
         """Ejecuta el bot en modo polling."""

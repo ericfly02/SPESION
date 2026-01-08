@@ -103,7 +103,7 @@ def get_garmin_stats(date: str | None = None) -> dict[str, Any]:
     """
     client = _get_garmin_client()
     if client is None:
-        return {"error": "Garmin no disponible", "mock_data": _get_mock_garmin_stats()}
+        return {"error": "Garmin no disponible"}
     
     try:
         target_date = _normalize_date(date)
@@ -167,7 +167,7 @@ def get_garmin_stats(date: str | None = None) -> dict[str, Any]:
         
     except Exception as e:
         logger.error(f"Error obteniendo stats de Garmin: {e}")
-        return {"error": str(e), "mock_data": _get_mock_garmin_stats()}
+        return {"error": str(e)}
 
 
 @tool

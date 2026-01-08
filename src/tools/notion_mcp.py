@@ -684,7 +684,7 @@ def add_contact(
 # =============================================================================
 
 @tool
-def setup_notion_workspace() -> dict[str, Any]:
+def setup_notion_workspace(force: bool = False) -> dict[str, Any]:
     """Inicializa todo el workspace de Notion para SPESION.
     
     Crea la página 'SPESION HQ' y las bases de datos:
@@ -705,9 +705,39 @@ def setup_notion_workspace() -> dict[str, Any]:
         
         if not settings.notion.api_key:
             return {"error": "API Key de Notion no configurada en .env"}
+
+        # Guardrail: evitar que un mensaje casual sobre Notion vuelva a ejecutar setup.
+        # Solo si force=True o faltan IDs críticos.
+        critical_ids = [
+            settings.notion.tasks_database_id,
+            settings.notion.knowledge_database_id,
+            settings.notion.crm_database_id,
+            settings.notion.finance_database_id,
+            settings.notion.goals_database_id,
+            settings.notion.pills_database_id,
+        ]
+        has_all = all(bool(x) for x in critical_ids)
+        if has_all and not force:
+            return {
+                "success": True,
+                "skipped": True,
+                "message": (
+                    "Notion ya está configurado. No voy a re-ejecutar el setup "
+                    "porque podría cambiar IDs. Si quieres forzar un re-setup, "
+                    "llama a setup_notion_workspace(force=true)."
+                ),
+                "database_ids": {
+                    "tasks": settings.notion.tasks_database_id,
+                    "knowledge": settings.notion.knowledge_database_id,
+                    "crm": settings.notion.crm_database_id,
+                    "finance": settings.notion.finance_database_id,
+                    "goals": settings.notion.goals_database_id,
+                    "pills": settings.notion.pills_database_id,
+                },
+            }
             
         service = NotionSetupService(settings.notion.api_key.get_secret_value())
-        ids = service.initialize_workspace()
+        ids = service.initialize_workspace(overwrite_env=force)
         
         # Actualizar configuración en memoria para uso inmediato
         settings.notion.tasks_database_id = ids["tasks"]
@@ -726,6 +756,217 @@ def setup_notion_workspace() -> dict[str, Any]:
     except Exception as e:
         logger.error(f"Error en setup de Notion: {e}")
         return {"error": str(e)}
+
+
+@tool
+def setup_books_database(force: bool = False) -> dict[str, Any]:
+    """Crea (si falta) la base de datos de libros/reading list sin re-ejecutar todo el setup."""
+    try:
+        from src.core.config import settings
+        from src.services.notion_setup import NotionSetupService
+
+        if not settings.notion.api_key:
+            return {"error": "API Key de Notion no configurada en .env"}
+
+        service = NotionSetupService(settings.notion.api_key.get_secret_value())
+        db_id = service.ensure_books_database(overwrite_env=force)
+
+        settings.notion.books_database_id = db_id
+
+        return {
+            "success": True,
+            "database": "books",
+            "id": db_id,
+            "message": "Books DB lista. Ya puedes guardar libros para leer.",
+        }
+    except Exception as e:
+        logger.error(f"Error creando Books DB: {e}")
+        return {"error": str(e)}
+
+
+@tool
+def add_book(
+    title: str,
+    author: str | None = None,
+    status: str = "Not started",
+    category: list[str] | None = None,
+    priority: str | None = None,
+    url: str | None = None,
+    notes: str | None = None,
+) -> dict[str, Any]:
+    """Añade un libro a la Reading List.
+
+    Nota: La propiedad Status es de tipo 'status' (Notion defaults: Not started / In progress / Done).
+    """
+    client = _get_notion_client()
+    if client is None:
+        return {"error": "Notion no disponible"}
+
+    from src.core.config import settings
+    if not settings.notion.books_database_id:
+        return {"error": "Books database ID no configurado. Ejecuta setup_books_database primero."}
+
+    try:
+        props: dict[str, Any] = {
+            "Name": {"title": [{"text": {"content": title}}]},
+            "Status": {"status": {"name": status}},
+        }
+        if author:
+            props["Author"] = {"rich_text": [{"text": {"content": author}}]}
+        if category:
+            props["Category"] = {"multi_select": [{"name": c} for c in category]}
+        if priority:
+            props["Priority"] = {"select": {"name": priority}}
+        if url:
+            props["URL"] = {"url": url}
+        if notes:
+            props["Notes"] = {"rich_text": [{"text": {"content": notes}}]}
+
+        page = client.pages.create(
+            parent={"database_id": settings.notion.books_database_id},
+            properties=props,
+        )
+        return {"created": True, "id": page["id"], "url": page.get("url", ""), "title": title}
+    except Exception as e:
+        logger.error(f"Error añadiendo libro: {e}")
+        return {"error": str(e)}
+
+
+@tool
+def setup_trainings_database(force: bool = False) -> dict[str, Any]:
+    """Crea (si falta) la base de datos de entrenos semanales sin re-ejecutar todo el setup."""
+    try:
+        from src.core.config import settings
+        from src.services.notion_setup import NotionSetupService
+
+        if not settings.notion.api_key:
+            return {"error": "API Key de Notion no configurada en .env"}
+
+        service = NotionSetupService(settings.notion.api_key.get_secret_value())
+        db_id = service.ensure_trainings_database(overwrite_env=force)
+
+        settings.notion.trainings_database_id = db_id
+
+        return {
+            "success": True,
+            "database": "trainings",
+            "id": db_id,
+            "message": "Trainings DB lista. Ya puedes guardar tus entrenos semanales.",
+        }
+    except Exception as e:
+        logger.error(f"Error creando Trainings DB: {e}")
+        return {"error": str(e)}
+
+
+@tool
+def log_training_session(
+    date: str,
+    day: str,
+    tipus_entreno: str,
+    distancia_km: float | None = None,
+    temps_min: float | None = None,
+    ritme_min_km: str | None = None,
+    pulsacions: float | None = None,
+    zona: str | None = None,
+    title: str | None = None,
+) -> dict[str, Any]:
+    """Guarda un entreno en la DB de Trainings.
+
+    Columns esperadas (Notion):
+    - Name (title)
+    - Data (date)
+    - Dia (select)
+    - Tipus entreno (select)
+    - Distància (km) (number)
+    - Temps (min) (number)
+    - Ritme (min/km) (rich_text)
+    - Pulsacions (number)
+    - Zona (select)
+    """
+    client = _get_notion_client()
+    if client is None:
+        return {"error": "Notion no disponible"}
+
+    from src.core.config import settings
+    if not settings.notion.trainings_database_id:
+        return {"error": "Trainings database ID no configurado. Ejecuta setup_trainings_database primero."}
+
+    try:
+        name = title or f"{tipus_entreno} - {date}"
+        props: dict[str, Any] = {
+            "Name": {"title": [{"text": {"content": name}}]},
+            "Data": {"date": {"start": date}},
+            "Dia": {"select": {"name": day}},
+            "Tipus entreno": {"select": {"name": tipus_entreno}},
+        }
+        if distancia_km is not None:
+            props["Distància (km)"] = {"number": float(distancia_km)}
+        if temps_min is not None:
+            props["Temps (min)"] = {"number": float(temps_min)}
+        if ritme_min_km:
+            props["Ritme (min/km)"] = {"rich_text": [{"text": {"content": ritme_min_km}}]}
+        if pulsacions is not None:
+            props["Pulsacions"] = {"number": float(pulsacions)}
+        if zona:
+            props["Zona"] = {"select": {"name": zona}}
+
+        page = client.pages.create(
+            parent={"database_id": settings.notion.trainings_database_id},
+            properties=props,
+        )
+
+        return {"created": True, "id": page["id"], "url": page.get("url", ""), "name": name}
+    except Exception as e:
+        logger.error(f"Error guardando entreno: {e}")
+        return {"error": str(e)}
+
+
+@tool
+def get_training_for_date(date: str) -> list[dict[str, Any]]:
+    """Obtiene entrenos planificados/registrados para una fecha."""
+    client = _get_notion_client()
+    if client is None:
+        return [{"error": "Notion no disponible"}]
+
+    from src.core.config import settings
+    if not settings.notion.trainings_database_id:
+        return [{"error": "Trainings database ID no configurado"}]
+
+    try:
+        resp = client.databases.query(
+            database_id=settings.notion.trainings_database_id,
+            filter={"property": "Data", "date": {"equals": date}},
+            page_size=20,
+        )
+
+        out: list[dict[str, Any]] = []
+        for page in resp.get("results", []):
+            props = page.get("properties", {})
+            title_prop = props.get("Name", {}).get("title", [])
+            name = title_prop[0]["plain_text"] if title_prop else "Sin título"
+
+            def _rt(prop_name: str) -> str:
+                rt = props.get(prop_name, {}).get("rich_text", [])
+                return rt[0]["plain_text"] if rt else ""
+
+            out.append({
+                "id": page.get("id", ""),
+                "name": name,
+                "date": props.get("Data", {}).get("date", {}).get("start", ""),
+                "day": props.get("Dia", {}).get("select", {}).get("name", ""),
+                "type": props.get("Tipus entreno", {}).get("select", {}).get("name", ""),
+                "distance_km": props.get("Distància (km)", {}).get("number"),
+                "time_min": props.get("Temps (min)", {}).get("number"),
+                "pace": _rt("Ritme (min/km)"),
+                "hr": props.get("Pulsacions", {}).get("number"),
+                "zone": props.get("Zona", {}).get("select", {}).get("name", ""),
+                "url": page.get("url", ""),
+            })
+
+        return out
+    except Exception as e:
+        logger.error(f"Error obteniendo entrenos: {e}")
+        return [{"error": str(e)}]
 
 
 # =============================================================================
@@ -749,7 +990,7 @@ def create_notion_crm_tools() -> list:
 
 def create_notion_setup_tools() -> list:
     """Herramientas de Setup."""
-    return [setup_notion_workspace]
+    return [setup_notion_workspace, setup_books_database, setup_trainings_database]
 
 
 def create_notion_tools() -> list:
@@ -763,6 +1004,11 @@ def create_notion_tools() -> list:
         search_contacts,
         add_contact,
         setup_notion_workspace,
+        setup_books_database,
+        setup_trainings_database,
+        add_book,
+        log_training_session,
+        get_training_for_date,
         add_portfolio_holding,
         get_portfolio_holdings,
     ]

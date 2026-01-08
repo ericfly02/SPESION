@@ -125,6 +125,14 @@ class NotionSettings(BaseSettings):
         default=None,
         description="ID de la base de datos de Knowledge Pills",
     )
+    books_database_id: str | None = Field(
+        default=None,
+        description="ID de la base de datos de Books / Reading List",
+    )
+    trainings_database_id: str | None = Field(
+        default=None,
+        description="ID de la base de datos de Trainings / Weekly Trainings",
+    )
 
 
 class GarminSettings(BaseSettings):

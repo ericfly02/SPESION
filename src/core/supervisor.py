@@ -146,6 +146,24 @@ Responde SOLO con el nombre del agente."""
             Nombre del agente o None si no hay match
         """
         text_lower = text.lower()
+
+        # ---------------------------------------------------------------------
+        # Routing explícito y seguro para Notion Setup (EVITAR re-setup accidental)
+        # Solo enviar a Sentinel si el usuario pide claramente inicializar/setup.
+        # ---------------------------------------------------------------------
+        if "notion" in text_lower:
+            setup_markers = {"setup", "inicializa", "inicializar", "initialize", "workspace", "hq"}
+            if any(k in text_lower for k in setup_markers):
+                return "sentinel"
+
+            # Si habla de Notion pero en modo "operación" (crear DB, guardar cosas),
+            # mejor Executive (productividad) en lugar de Sentinel.
+            build_markers = {
+                "base de datos", "database", "tabla", "crear", "crea", "añade", "agrega",
+                "libro", "libros", "books", "lectura", "reading",
+            }
+            if any(k in text_lower for k in build_markers):
+                return "executive"
         
         for keyword, agent in INTENT_TO_AGENT.items():
             if keyword in text_lower:
@@ -186,9 +204,8 @@ Responde SOLO con el nombre del agente."""
             "status": "sentinel",
             "backup": "sentinel",
             "sentinel": "sentinel",
-            "notion": "sentinel",
-            "setup": "sentinel",
-            "inicializa": "sentinel",
+            # NOTION: deliberadamente NO routeamos "notion" por keyword.
+            # Solo lo hacemos arriba cuando es explícito (setup) o creación (executive).
         }
         
         for keyword, agent in specific_keywords.items():

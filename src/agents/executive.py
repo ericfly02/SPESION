@@ -73,6 +73,38 @@ class ExecutiveAgent(BaseAgent):
         
         Considera el energy_level del usuario para ajustar recomendaciones.
         """
+        # Prefetch de datos reales para evitar alucinaciones (agenda/tasks)
+        try:
+            from langchain_core.messages import HumanMessage
+            from src.tools.calendar_mcp import get_calendar_events, get_today_agenda
+            from src.tools.notion_mcp import get_tasks
+
+            last_user = None
+            for msg in reversed(state.get("messages", [])):
+                if isinstance(msg, HumanMessage):
+                    last_user = str(msg.content).lower()
+                    break
+
+            if last_user:
+                agenda_markers = {
+                    "agenda", "calendario", "calendar", "reunión", "reunion", "meeting",
+                    "lunes", "martes", "miércoles", "miercoles", "jueves", "viernes",
+                    "sábado", "sabado", "domingo", "mañana", "manana", "hoy",
+                }
+                if any(k in last_user for k in agenda_markers):
+                    # Siempre traer agenda + próximos eventos (7 días) y tareas
+                    agenda_today = get_today_agenda.invoke({})
+                    events = get_calendar_events.invoke({"days": 7, "max_results": 25})
+                    tasks = get_tasks.invoke({"limit": 20})
+                    state["retrieved_context"] = state.get("retrieved_context", []) + [
+                        f"[CALENDAR_TODAY_AGENDA]: {agenda_today}",
+                        f"[CALENDAR_EVENTS_NEXT_7_DAYS]: {events}",
+                        f"[NOTION_TASKS]: {tasks}",
+                    ]
+        except Exception:
+            # Nunca romper Executive por prefetch
+            pass
+
         # Verificar energía antes de sugerir tareas pesadas
         energy_level = state.get("energy", {}).get("level", 0.7)
         
@@ -231,10 +263,23 @@ def create_executive_agent(
     """
     from src.tools.calendar_mcp import create_calendar_tools
     from src.tools.notion_mcp import create_notion_tasks_tools
+    from src.tools.notion_mcp import (
+        setup_books_database,
+        setup_trainings_database,
+        add_book,
+        log_training_session,
+        get_training_for_date,
+    )
     
     default_tools = [
         *create_calendar_tools(),
         *create_notion_tasks_tools(),
+        # Notion extra DBs / operations (sin re-ejecutar setup completo)
+        setup_books_database,
+        setup_trainings_database,
+        add_book,
+        log_training_session,
+        get_training_for_date,
     ]
     
     all_tools = default_tools + (tools or [])

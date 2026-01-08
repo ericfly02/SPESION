@@ -101,7 +101,7 @@ def get_strava_activities(
     )
     
     if data is None:
-        return [{"error": "Strava no disponible", "mock_data": _get_mock_activities()}]
+        return [{"error": "Strava no disponible"}]
     
     results = []
     for act in data:
