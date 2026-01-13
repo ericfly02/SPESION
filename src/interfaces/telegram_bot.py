@@ -818,33 +818,28 @@ O simplemente escríbeme lo que necesites."""
             except Exception:
                 pass
             
-            # 2. Guardar en Notion manualmente (Código-driven para fiabilidad)
+            # 2. Guardar en ChromaDB (local) para evitar el límite de blocks de Notion
             final_message = f"🎓 **Scholar Daily Briefing**\n\n{response_text}"
-            
+
             try:
-                from src.tools.notion_mcp import create_knowledge_pill
-                from datetime import datetime
-                
+                from src.services.vector_store import get_vector_store
+
                 today_str = datetime.now().strftime("%Y-%m-%d")
-                title = f"Daily Briefing - {today_str}"
-                
-                # Invocar herramienta directamente
-                save_result = create_knowledge_pill.invoke({
-                    "title": title,
-                    "content": response_text,
-                    "categories": ["Daily Briefing", "Scholar"],
-                    "tags": ["AI", "Tech", "Auto"]
-                })
-                
-                if isinstance(save_result, dict) and save_result.get("created"):
-                    url = save_result.get("url")
-                    final_message += f"\n\n💾 **Guardado en Notion:** [Ver en SPESION HQ]({url})"
-                elif isinstance(save_result, dict) and "error" in save_result:
-                    logger.error(f"Error guardando en Notion: {save_result['error']}")
-                    final_message += f"\n\n⚠️ *No se pudo guardar en Notion automáticamente.*"
-                    
-            except Exception as e_notion:
-                logger.error(f"Excepción guardando en Notion: {e_notion}")
+                store = get_vector_store()
+                ids = store.add_documents(
+                    collection_name="knowledge",
+                    documents=[response_text],
+                    metadatas=[{
+                        "type": "daily_briefing",
+                        "agent": "scholar",
+                        "date": today_str,
+                    }],
+                )
+                if ids:
+                    final_message += f"\n\n🧠 **Guardado en memoria (ChromaDB)**: `{ids[0]}`"
+            except Exception as e_mem:
+                logger.error(f"Excepción guardando en ChromaDB: {e_mem}")
+                final_message += "\n\n⚠️ *No se pudo guardar en memoria local.*"
             
             # 3. Enviar a Telegram
             await self._send_long_message(target_chat_id, final_message, context)

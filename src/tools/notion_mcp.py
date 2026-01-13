@@ -11,6 +11,24 @@ from langchain_core.tools import tool
 
 logger = logging.getLogger(__name__)
 
+def _is_free_blocks_error(e: Exception) -> bool:
+    msg = str(e).lower()
+    return (
+        "free blocks" in msg
+        or "used all of this workspace's free blocks" in msg
+        or "used all of this workspaces free blocks" in msg
+        or "workspace's free blocks" in msg
+    )
+
+def _free_blocks_error_response() -> dict[str, Any]:
+    return {
+        "error": (
+            "Notion: has alcanzado el límite de blocks del workspace (plan gratis). "
+            "SPESION no puede crear más páginas/filas/bloques en Notion hasta que "
+            "liberes blocks o actualices el plan."
+        )
+    }
+
 
 def _parse_markdown_text(text: str) -> list[dict[str, Any]]:
     """Convierte texto con Markdown simple a Rich Text de Notion.
@@ -374,6 +392,8 @@ def create_journal_entry(
         
     except Exception as e:
         logger.error(f"Error creando journal: {e}")
+        if _is_free_blocks_error(e):
+            return _free_blocks_error_response()
         return {"error": str(e)}
 
 
@@ -533,6 +553,8 @@ def create_knowledge_pill(
         
     except Exception as e:
         logger.error(f"Error creando knowledge pill: {e}")
+        if _is_free_blocks_error(e):
+            return _free_blocks_error_response()
         return {"error": str(e)}
 
 
@@ -708,12 +730,12 @@ def setup_notion_workspace(force: bool = False) -> dict[str, Any]:
 
         # Guardrail: evitar que un mensaje casual sobre Notion vuelva a ejecutar setup.
         # Solo si force=True o faltan IDs críticos.
+        # Goals DB intentionally not required (disabled to reduce Notion blocks on free plans)
         critical_ids = [
             settings.notion.tasks_database_id,
             settings.notion.knowledge_database_id,
             settings.notion.crm_database_id,
             settings.notion.finance_database_id,
-            settings.notion.goals_database_id,
             settings.notion.pills_database_id,
         ]
         has_all = all(bool(x) for x in critical_ids)
@@ -731,7 +753,6 @@ def setup_notion_workspace(force: bool = False) -> dict[str, Any]:
                     "knowledge": settings.notion.knowledge_database_id,
                     "crm": settings.notion.crm_database_id,
                     "finance": settings.notion.finance_database_id,
-                    "goals": settings.notion.goals_database_id,
                     "pills": settings.notion.pills_database_id,
                 },
             }
@@ -744,7 +765,7 @@ def setup_notion_workspace(force: bool = False) -> dict[str, Any]:
         settings.notion.knowledge_database_id = ids["knowledge"]
         settings.notion.crm_database_id = ids["crm"]
         settings.notion.finance_database_id = ids["finance"]
-        settings.notion.goals_database_id = ids["goals"]
+        # goals disabled
         settings.notion.pills_database_id = ids["pills"]
         
         return {
@@ -829,6 +850,8 @@ def add_book(
         return {"created": True, "id": page["id"], "url": page.get("url", ""), "title": title}
     except Exception as e:
         logger.error(f"Error añadiendo libro: {e}")
+        if _is_free_blocks_error(e):
+            return _free_blocks_error_response()
         return {"error": str(e)}
 
 
@@ -944,6 +967,8 @@ def log_training_session(
         return {"created": True, "id": page["id"], "url": page.get("url", ""), "name": name}
     except Exception as e:
         logger.error(f"Error guardando entreno: {e}")
+        if _is_free_blocks_error(e):
+            return _free_blocks_error_response()
         return {"error": str(e)}
 
 
@@ -1134,6 +1159,8 @@ def add_portfolio_holding(
         
     except Exception as e:
         logger.error(f"Error gestionando holding financiero: {e}")
+        if _is_free_blocks_error(e):
+            return _free_blocks_error_response()
         return {"error": str(e)}
 
 @tool

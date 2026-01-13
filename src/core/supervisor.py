@@ -148,6 +148,18 @@ Responde SOLO con el nombre del agente."""
         text_lower = text.lower()
 
         # ---------------------------------------------------------------------
+        # Tool-like commands (typed by user in Telegram) must NEVER fall back to
+        # conversational supervisor handling.
+        # ---------------------------------------------------------------------
+        # Examples: "setup_transactions_database", "setup_notion_workspace", "sync_investments_to_notion"
+        if text_lower.strip().startswith(("setup_", "sync_", "/setup", "/sync")):
+            return "sentinel"
+
+        # Also catch when user embeds the tool name inside a longer sentence.
+        if "setup_" in text_lower or "sync_" in text_lower:
+            return "sentinel"
+
+        # ---------------------------------------------------------------------
         # Routing explícito y seguro para Notion Setup (EVITAR re-setup accidental)
         # Solo enviar a Sentinel si el usuario pide claramente inicializar/setup.
         # ---------------------------------------------------------------------

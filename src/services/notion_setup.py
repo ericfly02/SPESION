@@ -38,7 +38,8 @@ class NotionSetupService:
         ids["tasks"] = self._create_tasks_db(root_id)
         ids["crm"] = self._create_crm_db(root_id)
         ids["finance"] = self._create_finance_db(root_id)
-        ids["goals"] = self._create_goals_db(root_id)
+        # NOTE: Goals DB disabled to reduce Notion block usage on free plans.
+        # Use ChromaDB / memory instead for goals.
         ids["pills"] = self._create_pills_db(root_id)
 
         # 3. Update .env file (por defecto: NO sobrescribir IDs existentes)
@@ -554,7 +555,6 @@ class NotionSetupService:
             "knowledge": "NOTION_KNOWLEDGE_DATABASE_ID",
             "crm": "NOTION_CRM_DATABASE_ID",
             "finance": "NOTION_FINANCE_DATABASE_ID",
-            "goals": "NOTION_GOALS_DATABASE_ID",
             "pills": "NOTION_PILLS_DATABASE_ID",
             "books": "NOTION_BOOKS_DATABASE_ID",
             "trainings": "NOTION_TRAININGS_DATABASE_ID",
