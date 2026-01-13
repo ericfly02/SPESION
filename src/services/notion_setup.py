@@ -88,6 +88,24 @@ class NotionSetupService:
         self._update_env_file({"trainings": db_id}, overwrite=overwrite_env)
         return db_id
 
+    def ensure_transactions_database(self, *, overwrite_env: bool = False) -> str:
+        """Crea (si falta) la DB de Transactions dentro del root page."""
+        root_page = self._create_root_page()
+        root_id = root_page["id"]
+
+        existing = self.client.search(
+            query="💸 Transactions",
+            filter={"property": "object", "value": "data_source"},
+        )
+        if existing.get("results"):
+            db_id = existing["results"][0]["id"]
+            self._update_env_file({"transactions": db_id}, overwrite=overwrite_env)
+            return db_id
+
+        db_id = self._create_transactions_db(root_id)
+        self._update_env_file({"transactions": db_id}, overwrite=overwrite_env)
+        return db_id
+
     def _create_root_page(self) -> dict[str, Any]:
         """Creates the main dashboard page."""
         # Note: We cannot create a page at the absolute root via API easily 
@@ -466,6 +484,60 @@ class NotionSetupService:
             logger.error(f"Error creating Trainings DB: {e}")
             raise
 
+    def _create_transactions_db(self, parent_id: str) -> str:
+        """Creates Transactions (Trades/Movements) DB."""
+        try:
+            db = self.client.databases.create(
+                parent={"type": "page_id", "page_id": parent_id},
+                title=[{"type": "text", "text": {"content": "💸 Transactions"}}],
+                initial_data_source={
+                    "properties": {
+                        "Name": {"type": "title", "title": {}},
+                        "Date": {"type": "date", "date": {}},
+                        "Broker": {"type": "select", "select": {"options": [
+                            {"name": "IBKR", "color": "blue"},
+                            {"name": "Bitget", "color": "orange"},
+                        ]}},
+                        "Product": {"type": "select", "select": {"options": [
+                            {"name": "Spot", "color": "green"},
+                            {"name": "Stock", "color": "blue"},
+                            {"name": "ETF", "color": "purple"},
+                            {"name": "Option", "color": "yellow"},
+                            {"name": "Future", "color": "red"},
+                            {"name": "Swap", "color": "orange"},
+                            {"name": "Crypto", "color": "gray"},
+                        ]}},
+                        "Symbol": {"type": "rich_text", "rich_text": {}},
+                        "Side": {"type": "select", "select": {"options": [
+                            {"name": "BUY", "color": "green"},
+                            {"name": "SELL", "color": "red"},
+                            {"name": "DEPOSIT", "color": "blue"},
+                            {"name": "WITHDRAWAL", "color": "orange"},
+                            {"name": "FEE", "color": "gray"},
+                            {"name": "DIVIDEND", "color": "purple"},
+                        ]}},
+                        "Quantity": {"type": "number", "number": {"format": "number"}},
+                        "Price": {"type": "number", "number": {"format": "number"}},
+                        "Fees": {"type": "number", "number": {"format": "number"}},
+                        "Currency": {"type": "select", "select": {"options": [
+                            {"name": "EUR", "color": "blue"},
+                            {"name": "USD", "color": "green"},
+                            {"name": "USDT", "color": "gray"},
+                            {"name": "BTC", "color": "orange"},
+                            {"name": "ETH", "color": "purple"},
+                        ]}},
+                        "Account": {"type": "rich_text", "rich_text": {}},
+                        "External ID": {"type": "rich_text", "rich_text": {}},
+                        "Raw": {"type": "rich_text", "rich_text": {}},
+                    }
+                },
+            )
+            logger.info(f"Created Transactions DB: {db['id']}")
+            return db["id"]
+        except Exception as e:
+            logger.error(f"Error creating Transactions DB: {e}")
+            raise
+
     def _update_env_file(self, ids: dict[str, str], *, overwrite: bool = False) -> None:
         """Updates the .env file with new IDs.
 
@@ -486,6 +558,7 @@ class NotionSetupService:
             "pills": "NOTION_PILLS_DATABASE_ID",
             "books": "NOTION_BOOKS_DATABASE_ID",
             "trainings": "NOTION_TRAININGS_DATABASE_ID",
+            "transactions": "NOTION_TRANSACTIONS_DATABASE_ID",
         }
         
         try:

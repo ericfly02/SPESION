@@ -859,6 +859,32 @@ def setup_trainings_database(force: bool = False) -> dict[str, Any]:
 
 
 @tool
+def setup_transactions_database(force: bool = False) -> dict[str, Any]:
+    """Crea (si falta) la base de datos de Transactions (trades/movimientos)."""
+    try:
+        from src.core.config import settings
+        from src.services.notion_setup import NotionSetupService
+
+        if not settings.notion.api_key:
+            return {"error": "API Key de Notion no configurada en .env"}
+
+        service = NotionSetupService(settings.notion.api_key.get_secret_value())
+        db_id = service.ensure_transactions_database(overwrite_env=force)
+
+        settings.notion.transactions_database_id = db_id
+
+        return {
+            "success": True,
+            "database": "transactions",
+            "id": db_id,
+            "message": "Transactions DB lista. Ya puedes sincronizar trades automáticamente.",
+        }
+    except Exception as e:
+        logger.error(f"Error creando Transactions DB: {e}")
+        return {"error": str(e)}
+
+
+@tool
 def log_training_session(
     date: str,
     day: str,
@@ -990,7 +1016,12 @@ def create_notion_crm_tools() -> list:
 
 def create_notion_setup_tools() -> list:
     """Herramientas de Setup."""
-    return [setup_notion_workspace, setup_books_database, setup_trainings_database]
+    return [
+        setup_notion_workspace,
+        setup_books_database,
+        setup_trainings_database,
+        setup_transactions_database,
+    ]
 
 
 def create_notion_tools() -> list:
@@ -1006,6 +1037,7 @@ def create_notion_tools() -> list:
         setup_notion_workspace,
         setup_books_database,
         setup_trainings_database,
+        setup_transactions_database,
         add_book,
         log_training_session,
         get_training_for_date,
@@ -1025,6 +1057,7 @@ def add_portfolio_holding(
     quantity: float,
     type: str,
     category: str,
+    avg_price: float | None = None,
     current_price: float | None = None,
 ) -> dict[str, Any]:
     """Añade o actualiza una posición en el portfolio de finanzas.
@@ -1069,10 +1102,12 @@ def add_portfolio_holding(
             "Last Updated": {"date": {"start": today}},
         }
         
-        # Calcular precio promedio si no se da
+        # Avg Price: si se proporciona explícitamente, respetarlo.
+        # Si no, usar amount/quantity como fallback.
         if quantity > 0:
-            avg_price = amount / quantity
-            properties["Avg Price"] = {"number": avg_price}
+            if avg_price is None:
+                avg_price = amount / quantity
+            properties["Avg Price"] = {"number": float(avg_price)}
             
         if current_price:
             properties["Current Price"] = {"number": float(current_price)}
@@ -1132,6 +1167,7 @@ def get_portfolio_holdings() -> list[dict[str, Any]]:
                 "ticker": ticker,
                 "amount": props.get("Amount", {}).get("number", 0),
                 "quantity": props.get("Quantity", {}).get("number", 0),
+                "avg_price": props.get("Avg Price", {}).get("number", 0),
                 "type": props.get("Type", {}).get("select", {}).get("name", ""),
                 "category": props.get("Category", {}).get("select", {}).get("name", ""),
                 "current_price": props.get("Current Price", {}).get("number", 0),
@@ -1146,4 +1182,83 @@ def get_portfolio_holdings() -> list[dict[str, Any]]:
 def create_notion_finance_tools() -> list:
     """Herramientas de Finanzas."""
     return [add_portfolio_holding, get_portfolio_holdings]
+
+
+@tool
+def get_transactions(
+    days: int = 7,
+    limit: int = 200,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> list[dict[str, Any]]:
+    """Obtiene transacciones/trades desde la DB de Transactions.
+
+    Args:
+        days: Ventana hacia atrás si no se especifica start_date (default 7)
+        limit: Máximo de resultados
+        start_date: YYYY-MM-DD (opcional)
+        end_date: YYYY-MM-DD (opcional)
+    """
+    client = _get_notion_client()
+    if client is None:
+        return [{"error": "Notion no disponible"}]
+
+    from src.core.config import settings
+    if not settings.notion.transactions_database_id:
+        return [{"error": "Transactions database ID no configurado"}]
+
+    try:
+        from datetime import datetime, timedelta
+
+        if not start_date:
+            start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+
+        # Notion filter: date on_or_after / on_or_before
+        date_filter: dict[str, Any] = {"property": "Date", "date": {"on_or_after": start_date}}
+        if end_date:
+            date_filter = {
+                "and": [
+                    {"property": "Date", "date": {"on_or_after": start_date}},
+                    {"property": "Date", "date": {"on_or_before": end_date}},
+                ]
+            }
+
+        resp = client.databases.query(
+            database_id=settings.notion.transactions_database_id,
+            filter=date_filter,
+            page_size=min(limit, 100),
+            sorts=[{"property": "Date", "direction": "descending"}],
+        )
+
+        out: list[dict[str, Any]] = []
+        for page in resp.get("results", []):
+            props = page.get("properties", {})
+
+            def rt(prop: str) -> str:
+                arr = props.get(prop, {}).get("rich_text", [])
+                return arr[0]["plain_text"] if arr else ""
+
+            title_prop = props.get("Name", {}).get("title", [])
+            name = title_prop[0]["plain_text"] if title_prop else ""
+
+            out.append({
+                "id": page.get("id", ""),
+                "name": name,
+                "date": props.get("Date", {}).get("date", {}).get("start", ""),
+                "broker": props.get("Broker", {}).get("select", {}).get("name", ""),
+                "product": props.get("Product", {}).get("select", {}).get("name", ""),
+                "symbol": rt("Symbol"),
+                "side": props.get("Side", {}).get("select", {}).get("name", ""),
+                "quantity": props.get("Quantity", {}).get("number", None),
+                "price": props.get("Price", {}).get("number", None),
+                "fees": props.get("Fees", {}).get("number", None),
+                "currency": props.get("Currency", {}).get("select", {}).get("name", ""),
+                "account": rt("Account"),
+                "external_id": rt("External ID"),
+            })
+
+        return out
+    except Exception as e:
+        logger.error(f"Error obteniendo transactions: {e}")
+        return [{"error": str(e)}]
 

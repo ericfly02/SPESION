@@ -133,6 +133,51 @@ class NotionSettings(BaseSettings):
         default=None,
         description="ID de la base de datos de Trainings / Weekly Trainings",
     )
+    transactions_database_id: str | None = Field(
+        default=None,
+        description="ID de la base de datos de Transactions (trades/movimientos)",
+    )
+
+
+class IBKRSettings(BaseSettings):
+    """Configuración de Interactive Brokers (Flex Web Service)."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="IBKR_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    # Flex Web Service
+    flex_token: SecretStr | None = Field(
+        default=None,
+        description="IBKR Flex Web Service token",
+    )
+    flex_query_id: str | None = Field(
+        default=None,
+        description="IBKR Flex Query ID (statement query id)",
+    )
+
+
+class BitgetSettings(BaseSettings):
+    """Configuración de Bitget (via ccxt)."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="BITGET_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    api_key: SecretStr | None = Field(default=None, description="Bitget API key")
+    api_secret: SecretStr | None = Field(default=None, description="Bitget API secret")
+    passphrase: SecretStr | None = Field(default=None, description="Bitget API passphrase")
+    # spot | swap | futures (ccxt uses 'defaultType' in options)
+    default_type: Literal["spot", "swap", "futures"] = Field(
+        default="spot",
+        description="Tipo por defecto para Bitget en ccxt",
+    )
 
 
 class GarminSettings(BaseSettings):
@@ -316,6 +361,8 @@ class Settings(BaseSettings):
     llm: LLMSettings = Field(default_factory=LLMSettings)
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
     notion: NotionSettings = Field(default_factory=NotionSettings)
+    ibkr: IBKRSettings = Field(default_factory=IBKRSettings)
+    bitget: BitgetSettings = Field(default_factory=BitgetSettings)
     garmin: GarminSettings = Field(default_factory=GarminSettings)
     strava: StravaSettings = Field(default_factory=StravaSettings)
     github: GitHubSettings = Field(default_factory=GitHubSettings)

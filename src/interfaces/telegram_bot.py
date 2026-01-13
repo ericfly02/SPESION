@@ -654,6 +654,19 @@ O simplemente escríbeme lo que necesites."""
                     "max_instances": 1,
                 },
             )
+
+            # Daily investment sync (trades -> Notion Transactions)
+            app.job_queue.run_daily(
+                self.send_investment_sync,
+                time=time(hour=8, minute=20, tzinfo=tz),  # 08:20 local
+                days=(0, 1, 2, 3, 4, 5, 6),
+                name="investment_sync",
+                job_kwargs={
+                    "misfire_grace_time": 600,
+                    "coalesce": True,
+                    "max_instances": 1,
+                },
+            )
         
         self._app = app
         return app
@@ -854,13 +867,23 @@ O simplemente escríbeme lo que necesites."""
 
         try:
             from src.tools.calendar_mcp import get_today_agenda
-            from src.tools.notion_mcp import get_tasks, get_training_for_date, get_portfolio_holdings
+            from src.tools.notion_mcp import get_tasks, get_training_for_date, get_portfolio_holdings, setup_transactions_database
+            from src.tools.portfolio_reconcile import update_finance_portfolio_from_transactions
 
             today_str = datetime.now().strftime("%Y-%m-%d")
 
             agenda = get_today_agenda.invoke({})
             tasks = get_tasks.invoke({"limit": 50})
             trainings = get_training_for_date.invoke({"date": today_str})
+
+            # Reconcile portfolio from Transactions -> Finance Portfolio before snapshot
+            try:
+                setup_transactions_database.invoke({"force": False})
+                update_finance_portfolio_from_transactions.invoke({"days": 365, "force_full_rebuild": False})
+            except Exception:
+                # Never break morning brief due to finance sync
+                pass
+
             holdings = get_portfolio_holdings.invoke({})
 
             # Filtrar tasks por due_date hoy
@@ -934,10 +957,44 @@ O simplemente escríbeme lo que necesites."""
                 for k, v in sorted(by_type.items(), key=lambda kv: kv[1], reverse=True):
                     msg += f"  - {k}: €{v:,.0f} ({pct(v)})\n"
 
+                msg += "\n_Actualizado desde tu Transactions DB antes de este brief._\n"
+
             await self._send_long_message(target_chat_id, msg, context)
         except Exception as e:
             logger.error(f"Error en morning brief: {e}")
             await context.bot.send_message(chat_id=target_chat_id, text="Error generando el morning brief.")
+
+    async def send_investment_sync(self, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Sincroniza inversiones (IBKR + Bitget) hacia Notion Transactions DB."""
+        target_chat_id = None
+        if self.allowed_users:
+            target_chat_id = self.allowed_users[0]
+        else:
+            logger.warning("No hay usuarios configurados en TELEGRAM_ALLOWED_USER_IDS para investment sync.")
+            return
+
+        try:
+            from src.tools.notion_mcp import setup_transactions_database
+            from src.tools.investments_sync import sync_investments_to_notion
+
+            # Ensure DB exists (idempotent)
+            setup_transactions_database.invoke({"force": False})
+
+            res = sync_investments_to_notion.invoke({"days": 2, "include_ibkr": True, "include_bitget": True})
+            if isinstance(res, dict) and res.get("success"):
+                msg = (
+                    "💸 **Investment Sync**\n"
+                    f"- Created: {res.get('created', 0)}\n"
+                    f"- Updated: {res.get('updated', 0)}\n"
+                )
+            else:
+                msg = f"💸 Investment Sync: error: {res}"
+
+            await context.bot.send_message(chat_id=target_chat_id, text=msg, parse_mode="Markdown")
+        except TelegramError:
+            await context.bot.send_message(chat_id=target_chat_id, text="Investment Sync ejecutado (ver logs).")
+        except Exception as e:
+            logger.error(f"Error en investment sync: {e}")
 
     def run(self) -> None:
         """Ejecuta el bot en modo polling."""

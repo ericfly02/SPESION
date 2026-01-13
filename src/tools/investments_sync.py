@@ -1,0 +1,361 @@
+"""Investment Sync Tools - IBKR + Bitget -> Notion Transactions DB (idempotent)."""
+
+from __future__ import annotations
+
+import json
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+from langchain_core.tools import tool
+
+logger = logging.getLogger(__name__)
+
+
+def _get_notion_client():
+    try:
+        from notion_client import Client
+        from src.core.config import settings
+
+        if not settings.notion.api_key:
+            return None
+        return Client(auth=settings.notion.api_key.get_secret_value())
+    except Exception:
+        return None
+
+
+def _iso(dt: datetime) -> str:
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _safe_float(x: Any) -> float | None:
+    try:
+        if x is None or x == "":
+            return None
+        return float(x)
+    except Exception:
+        return None
+
+
+def _upsert_transaction(
+    *,
+    client,
+    database_id: str,
+    external_id: str,
+    name: str,
+    date_iso: str,
+    broker: str,
+    product: str | None,
+    symbol: str | None,
+    side: str | None,
+    qty: float | None,
+    price: float | None,
+    fees: float | None,
+    currency: str | None,
+    account: str | None,
+    raw: dict[str, Any],
+) -> dict[str, Any]:
+    """Upsert by External ID (rich_text equals)."""
+    # Query existing
+    existing = client.databases.query(
+        database_id=database_id,
+        filter={"property": "External ID", "rich_text": {"equals": external_id}},
+        page_size=1,
+    )
+
+    props: dict[str, Any] = {
+        "Name": {"title": [{"text": {"content": name}}]},
+        "Date": {"date": {"start": date_iso}},
+        "Broker": {"select": {"name": broker}},
+        "External ID": {"rich_text": [{"text": {"content": external_id}}]},
+    }
+
+    if product:
+        props["Product"] = {"select": {"name": product}}
+    if symbol:
+        props["Symbol"] = {"rich_text": [{"text": {"content": symbol}}]}
+    if side:
+        props["Side"] = {"select": {"name": side}}
+    if qty is not None:
+        props["Quantity"] = {"number": float(qty)}
+    if price is not None:
+        props["Price"] = {"number": float(price)}
+    if fees is not None:
+        props["Fees"] = {"number": float(fees)}
+    if currency:
+        props["Currency"] = {"select": {"name": currency}}
+    if account:
+        props["Account"] = {"rich_text": [{"text": {"content": account}}]}
+
+    # Keep raw compact (Notion rich_text limit is small; keep it short)
+    raw_str = json.dumps(raw, ensure_ascii=False)[:1800]
+    props["Raw"] = {"rich_text": [{"text": {"content": raw_str}}]}
+
+    if existing.get("results"):
+        page_id = existing["results"][0]["id"]
+        client.pages.update(page_id=page_id, properties=props)
+        return {"action": "updated", "id": page_id}
+
+    created = client.pages.create(parent={"database_id": database_id}, properties=props)
+    return {"action": "created", "id": created["id"], "url": created.get("url", "")}
+
+
+def _fetch_ibkr_flex_trades(days: int) -> list[dict[str, Any]]:
+    """Fetch trades from IBKR Flex Web Service (requires IBKR_FLEX_TOKEN, IBKR_FLEX_QUERY_ID)."""
+    from src.core.config import settings
+
+    if not settings.ibkr.flex_token or not settings.ibkr.flex_query_id:
+        raise ValueError("IBKR no configurado: faltan IBKR_FLEX_TOKEN y/o IBKR_FLEX_QUERY_ID en .env")
+
+    try:
+        import httpx
+        import xml.etree.ElementTree as ET
+
+        token = settings.ibkr.flex_token.get_secret_value()
+        qid = settings.ibkr.flex_query_id
+
+        # 1) SendRequest -> reference code
+        send_url = "https://www.interactivebrokers.com/Universal/servlet/FlexStatementService.SendRequest"
+        r = httpx.get(send_url, params={"t": token, "q": qid, "v": "3"}, timeout=30.0)
+        r.raise_for_status()
+        root = ET.fromstring(r.text)
+        ref_code = root.attrib.get("referenceCode") or root.findtext("ReferenceCode")
+        if not ref_code:
+            raise ValueError(f"IBKR Flex SendRequest failed: {r.text[:200]}")
+
+        # 2) GetStatement -> XML payload
+        get_url = "https://www.interactivebrokers.com/Universal/servlet/FlexStatementService.GetStatement"
+        r2 = httpx.get(get_url, params={"t": token, "q": ref_code, "v": "3"}, timeout=60.0)
+        r2.raise_for_status()
+        root2 = ET.fromstring(r2.text)
+
+        # Trades often appear under <Trades> / <Trade> entries (schema depends on query)
+        # We keep this resilient: search for any elements named 'Trade' or 'TradeConfirm' etc.
+        trades: list[dict[str, Any]] = []
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+        for elem in root2.iter():
+            tag = elem.tag.lower()
+            if tag.endswith("trade"):
+                row = dict(elem.attrib)
+                # Try parse datetime-ish fields
+                dt_raw = (
+                    row.get("tradeDateTime")
+                    or row.get("dateTime")
+                    or row.get("tradeDate")
+                    or row.get("date")
+                )
+                # Keep row; date parsing will be done later if possible
+                row["_dt_raw"] = dt_raw
+                trades.append(row)
+
+        # Basic filtering if tradeDate exists in YYYYMMDD or YYYY-MM-DD
+        out: list[dict[str, Any]] = []
+        for t in trades:
+            dt_raw = str(t.get("_dt_raw") or "")
+            dt_obj: datetime | None = None
+            for fmt in ("%Y-%m-%d", "%Y%m%d", "%Y-%m-%d %H:%M:%S", "%Y%m%d;%H:%M:%S"):
+                try:
+                    dt_obj = datetime.strptime(dt_raw[:len(fmt)], fmt).replace(tzinfo=timezone.utc)
+                    break
+                except Exception:
+                    continue
+            if dt_obj and dt_obj < cutoff:
+                continue
+            out.append(t)
+
+        return out
+    except Exception as e:
+        raise ValueError(f"IBKR Flex error: {e}")
+
+
+def _fetch_bitget_trades(days: int) -> list[dict[str, Any]]:
+    """Fetch trades using ccxt (requires BITGET_API_KEY/SECRET/PASSPHRASE)."""
+    from src.core.config import settings
+
+    if not settings.bitget.api_key or not settings.bitget.api_secret or not settings.bitget.passphrase:
+        raise ValueError("Bitget no configurado: faltan BITGET_API_KEY / BITGET_API_SECRET / BITGET_PASSPHRASE")
+
+    try:
+        import ccxt  # type: ignore
+
+        ex = ccxt.bitget({
+            "apiKey": settings.bitget.api_key.get_secret_value(),
+            "secret": settings.bitget.api_secret.get_secret_value(),
+            "password": settings.bitget.passphrase.get_secret_value(),
+            "enableRateLimit": True,
+            "options": {"defaultType": settings.bitget.default_type},
+        })
+
+        since_ms = int((datetime.now(timezone.utc) - timedelta(days=days)).timestamp() * 1000)
+
+        # ccxt requires symbol for some exchanges; we try a best-effort approach:
+        # - load markets
+        # - fetch trades for a limited set of active markets (top N)
+        ex.load_markets()
+        symbols = [s for s in ex.symbols][:25]  # cap to avoid rate limit
+
+        all_trades: list[dict[str, Any]] = []
+        for sym in symbols:
+            try:
+                trades = ex.fetch_my_trades(symbol=sym, since=since_ms, limit=50)
+                for t in trades:
+                    all_trades.append(t)
+            except Exception:
+                continue
+
+        # Deduplicate by (id, symbol) if available
+        seen: set[str] = set()
+        out: list[dict[str, Any]] = []
+        for t in all_trades:
+            tid = str(t.get("id") or "")
+            sym = str(t.get("symbol") or "")
+            key = f"{tid}:{sym}"
+            if tid and key in seen:
+                continue
+            seen.add(key)
+            out.append(t)
+        return out
+    except ImportError:
+        raise ValueError("Falta dependencia: instala ccxt")
+    except Exception as e:
+        raise ValueError(f"Bitget ccxt error: {e}")
+
+
+@tool
+def sync_investments_to_notion(days: int = 7, include_ibkr: bool = True, include_bitget: bool = True) -> dict[str, Any]:
+    """Sincroniza trades/movimientos desde IBKR + Bitget y los guarda en Notion (sin duplicados)."""
+    from src.core.config import settings
+
+    client = _get_notion_client()
+    if client is None:
+        return {"error": "Notion no disponible"}
+
+    if not settings.notion.transactions_database_id:
+        return {"error": "Transactions DB no configurada. Ejecuta setup_transactions_database primero."}
+
+    db_id = settings.notion.transactions_database_id
+
+    created = 0
+    updated = 0
+    errors: list[str] = []
+
+    # IBKR
+    if include_ibkr:
+        try:
+            trades = _fetch_ibkr_flex_trades(days=days)
+            for tr in trades:
+                # Best-effort mapping (schema depends on Flex query)
+                sym = tr.get("symbol") or tr.get("conid") or tr.get("description") or ""
+                side = (tr.get("buySell") or tr.get("side") or "").upper()
+                side = "BUY" if side.startswith("B") else "SELL" if side.startswith("S") else None
+                qty = _safe_float(tr.get("quantity") or tr.get("qty"))
+                price = _safe_float(tr.get("tradePrice") or tr.get("price"))
+                fees = _safe_float(tr.get("ibCommission") or tr.get("commission") or tr.get("fees"))
+                ccy = tr.get("currency") or tr.get("tradeCurrency")
+                acct = tr.get("accountId") or tr.get("account") or ""
+
+                dt_raw = str(tr.get("_dt_raw") or tr.get("tradeDateTime") or tr.get("tradeDate") or "")
+                # If we can't parse, store today to avoid failing; but keep raw.
+                date_iso = datetime.now(timezone.utc).date().isoformat()
+                try:
+                    # Try common IBKR formats
+                    for fmt in ("%Y-%m-%d", "%Y%m%d", "%Y-%m-%d %H:%M:%S"):
+                        try:
+                            dt = datetime.strptime(dt_raw[:len(fmt)], fmt).replace(tzinfo=timezone.utc)
+                            date_iso = dt.date().isoformat()
+                            break
+                        except Exception:
+                            continue
+                except Exception:
+                    pass
+
+                trade_id = tr.get("tradeID") or tr.get("tradeId") or tr.get("transactionID") or tr.get("transactionId")
+                external_id = f"ibkr:{acct}:{trade_id or json.dumps(tr, sort_keys=True)[:120]}"
+
+                res = _upsert_transaction(
+                    client=client,
+                    database_id=db_id,
+                    external_id=external_id,
+                    name=f"IBKR {side or ''} {sym}".strip(),
+                    date_iso=date_iso,
+                    broker="IBKR",
+                    product="Stock",
+                    symbol=str(sym)[:80] if sym else None,
+                    side=side,
+                    qty=qty,
+                    price=price,
+                    fees=fees,
+                    currency=str(ccy)[:10] if ccy else None,
+                    account=str(acct)[:80] if acct else None,
+                    raw=tr,
+                )
+                if res["action"] == "created":
+                    created += 1
+                else:
+                    updated += 1
+        except Exception as e:
+            errors.append(str(e))
+
+    # Bitget
+    if include_bitget:
+        try:
+            trades = _fetch_bitget_trades(days=days)
+            for tr in trades:
+                ts = tr.get("timestamp")
+                dt = datetime.fromtimestamp((ts or 0) / 1000, tz=timezone.utc) if ts else datetime.now(timezone.utc)
+                date_iso = dt.date().isoformat()
+
+                sym = tr.get("symbol") or ""
+                side = (tr.get("side") or "").upper()
+                side = "BUY" if side.startswith("B") else "SELL" if side.startswith("S") else None
+                qty = _safe_float(tr.get("amount"))
+                price = _safe_float(tr.get("price"))
+                fee = tr.get("fee") or {}
+                fees = _safe_float(fee.get("cost")) if isinstance(fee, dict) else None
+                ccy = None
+                if isinstance(fee, dict):
+                    ccy = fee.get("currency")
+
+                tid = tr.get("id") or tr.get("order") or tr.get("orderId") or ""
+                external_id = f"bitget:{sym}:{tid}"
+
+                res = _upsert_transaction(
+                    client=client,
+                    database_id=db_id,
+                    external_id=external_id,
+                    name=f"Bitget {side or ''} {sym}".strip(),
+                    date_iso=date_iso,
+                    broker="Bitget",
+                    product="Spot",
+                    symbol=str(sym)[:80] if sym else None,
+                    side=side,
+                    qty=qty,
+                    price=price,
+                    fees=fees,
+                    currency=str(ccy)[:10] if ccy else None,
+                    account=None,
+                    raw=tr,
+                )
+                if res["action"] == "created":
+                    created += 1
+                else:
+                    updated += 1
+        except Exception as e:
+            errors.append(str(e))
+
+    return {
+        "success": len(errors) == 0,
+        "created": created,
+        "updated": updated,
+        "errors": errors,
+        "days": days,
+    }
+
+
+def create_investment_sync_tools() -> list:
+    return [sync_investments_to_notion]
+
