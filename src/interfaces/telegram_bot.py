@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import json
+import re
 from datetime import datetime, time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -705,14 +706,34 @@ O simplemente escríbeme lo que necesites."""
             except Exception:
                 sent_ids = set()
 
+            def _norm_arxiv_id(x: str) -> str:
+                # Normaliza "2512.25075v1" -> "2512.25075"
+                return re.sub(r"v\d+$", "", x.strip())
+
             papers = get_recent_papers.invoke({
                 "days": 7,
-                "max_results": 25,
+                "max_results": 18,
                 "categories": ["cs.AI", "cs.LG", "cs.CL", "q-bio.NC", "q-fin.GN", "econ.GN", "q-bio.QM"],
             })
             papers = [p for p in papers if isinstance(p, dict) and "error" not in p]
-            papers = [p for p in papers if p.get("arxiv_id") and p["arxiv_id"] not in sent_ids]
-            papers = papers[:12]
+            # Dedupe: strip version suffix + cap fields to reduce prompt tokens
+            cleaned_papers: list[dict] = []
+            for p in papers:
+                aid = p.get("arxiv_id")
+                if not aid:
+                    continue
+                base_id = _norm_arxiv_id(str(aid))
+                if base_id in sent_ids:
+                    continue
+                cleaned_papers.append({
+                    "title": p.get("title", "")[:180],
+                    "published": p.get("published", ""),
+                    "arxiv_id": base_id,
+                    "pdf_url": p.get("pdf_url", ""),
+                    "category": p.get("category", ""),
+                    "summary": str(p.get("summary", ""))[:220],
+                })
+            papers = cleaned_papers[:8]
 
             # Curación de noticias: evitar gadgets/laptops, priorizar economía/medicina/neuro/IA
             raw_news: list[dict] = []
@@ -738,28 +759,44 @@ O simplemente escríbeme lo que necesites."""
                 if any(k in title for k in bad_kw):
                     continue
                 seen_urls.add(url)
-                news.append(n)
-            news = news[:10]
+                news.append({
+                    "title": str(n.get("title", ""))[:200],
+                    "url": url,
+                    "source": n.get("source", ""),
+                    "date": n.get("date", ""),
+                    "snippet": str(n.get("snippet", ""))[:180],
+                })
+            news = news[:7]
 
-            # 2) Generar briefing SOLO a partir de estos inputs (anti-alucinación)
-            response_text = await self.assistant.achat(
-                message=(
-                    "Genera mi 'Scholar Daily Briefing' Super Aesthetic.\n\n"
-                    "REGLA: NO puedes añadir papers/noticias fuera de las listas. "
-                    "Si faltan temas, dilo.\n\n"
-                    f"PAPERS_JSON:\n{json.dumps(papers, ensure_ascii=False)}\n\n"
-                    f"NEWS_JSON:\n{json.dumps(news, ensure_ascii=False)}\n\n"
-                    "Requisitos: cubrir IA, neurociencia, medicina, economía/ciencia. "
-                    "Omitir gadgets (laptops, móviles)."
-                ),
-                user_id=str(target_chat_id),
-                telegram_chat_id=target_chat_id,
-            )
+            async def _generate_brief(short_mode: bool) -> str:
+                return await self.assistant.achat(
+                    message=(
+                        "Genera mi 'Scholar Daily Briefing' Super Aesthetic.\n\n"
+                        "REGLA: NO puedes añadir papers/noticias fuera de las listas. "
+                        "Si faltan temas, dilo.\n\n"
+                        f"PAPERS_JSON:\n{json.dumps(papers, ensure_ascii=False)}\n\n"
+                        f"NEWS_JSON:\n{json.dumps(news, ensure_ascii=False)}\n\n"
+                        "Requisitos: cubrir IA, neurociencia, medicina, economía/ciencia. "
+                        "Omitir gadgets (laptops, móviles).\n"
+                        + ("Modo: compacto (máx 6-7 min lectura)." if short_mode else "Modo: normal (máx 8-10 min lectura).")
+                    ),
+                    user_id=str(target_chat_id),
+                    telegram_chat_id=target_chat_id,
+                )
+
+            # 2) Generar briefing; si OpenAI revienta por TPM/tokens, reintentar compacto
+            try:
+                response_text = await _generate_brief(short_mode=False)
+            except Exception as e1:
+                if "rate_limit_exceeded" in str(e1) or "Request too large" in str(e1) or "TPM" in str(e1):
+                    response_text = await _generate_brief(short_mode=True)
+                else:
+                    raise
 
             # Persistir IDs para dedupe futuro
             try:
-                new_ids = [p.get("arxiv_id") for p in papers if p.get("arxiv_id")]
-                merged = list((sent_ids | set(new_ids)))
+                new_ids = [_norm_arxiv_id(str(p.get("arxiv_id"))) for p in papers if p.get("arxiv_id")]
+                merged = list((set(_norm_arxiv_id(x) for x in sent_ids) | set(new_ids)))
                 merged = merged[-300:]  # mantener acotado
                 cache_path.write_text(
                     json.dumps({"ids": merged, "updated_at": datetime.now().strftime("%Y-%m-%d")}, ensure_ascii=False),

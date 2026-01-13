@@ -57,7 +57,8 @@ class NotionSetupService:
 
         existing = self.client.search(
             query="📚 Reading List",
-            filter={"property": "object", "value": "database"},
+            # Notion Search API (Data Sources): value must be "page" or "data_source"
+            filter={"property": "object", "value": "data_source"},
         )
         if existing.get("results"):
             db_id = existing["results"][0]["id"]
@@ -75,7 +76,8 @@ class NotionSetupService:
 
         existing = self.client.search(
             query="🏃 Weekly Trainings",
-            filter={"property": "object", "value": "database"},
+            # Notion Search API (Data Sources): value must be "page" or "data_source"
+            filter={"property": "object", "value": "data_source"},
         )
         if existing.get("results"):
             db_id = existing["results"][0]["id"]

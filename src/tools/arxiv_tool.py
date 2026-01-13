@@ -146,7 +146,8 @@ def get_recent_papers(
                     "title": paper.title,
                     "authors": [a.name for a in paper.authors[:3]],
                     "published": paper.published.strftime("%Y-%m-%d"),
-                    "arxiv_id": paper.entry_id.split("/")[-1],
+                    # Normalizar ID (sin sufijo de versión v1/v2) para dedupe consistente
+                    "arxiv_id": paper.entry_id.split("/")[-1].split("v")[0],
                     "pdf_url": paper.pdf_url,
                     "summary": paper.summary[:300] + "...",
                     "category": paper.primary_category,
