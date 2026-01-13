@@ -132,7 +132,7 @@ def _fetch_ibkr_flex_trades(days: int) -> list[dict[str, Any]]:
         root2 = ET.fromstring(r2.text)
 
         # Trades often appear under <Trades> / <Trade> entries (schema depends on query)
-        # We keep this resilient: search for any elements named 'Trade' or 'TradeConfirm' etc.
+        # We keep this resilient: search for any elements whose tag ends with "trade".
         trades: list[dict[str, Any]] = []
 
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
@@ -141,28 +141,37 @@ def _fetch_ibkr_flex_trades(days: int) -> list[dict[str, Any]]:
             tag = elem.tag.lower()
             if tag.endswith("trade"):
                 row = dict(elem.attrib)
+                row_lc = {str(k).lower(): v for k, v in row.items()}
                 # Try parse datetime-ish fields
                 dt_raw = (
-                    row.get("tradeDateTime")
-                    or row.get("dateTime")
-                    or row.get("tradeDate")
-                    or row.get("date")
+                    row_lc.get("tradedatetime")
+                    or row_lc.get("datetime")
+                    or row_lc.get("date/time")
+                    or row_lc.get("tradedate")
+                    or row_lc.get("reportdate")
+                    or row_lc.get("date")
                 )
                 # Keep row; date parsing will be done later if possible
                 row["_dt_raw"] = dt_raw
+                row["_lc"] = row_lc
                 trades.append(row)
 
-        # Basic filtering if tradeDate exists in YYYYMMDD or YYYY-MM-DD
+        # Basic filtering (dateutil) – your Flex query uses yyyy-MM-dd and DateTime separator ';'
         out: list[dict[str, Any]] = []
         for t in trades:
             dt_raw = str(t.get("_dt_raw") or "")
             dt_obj: datetime | None = None
-            for fmt in ("%Y-%m-%d", "%Y%m%d", "%Y-%m-%d %H:%M:%S", "%Y%m%d;%H:%M:%S"):
-                try:
-                    dt_obj = datetime.strptime(dt_raw[:len(fmt)], fmt).replace(tzinfo=timezone.utc)
-                    break
-                except Exception:
-                    continue
+            try:
+                from dateutil import parser as date_parser
+
+                cleaned = dt_raw.replace(";", " ").strip()
+                if cleaned:
+                    # dayfirst=False because your query uses yyyy-MM-dd
+                    dt_obj = date_parser.parse(cleaned, dayfirst=False, fuzzy=True)
+                    if dt_obj.tzinfo is None:
+                        dt_obj = dt_obj.replace(tzinfo=timezone.utc)
+            except Exception:
+                dt_obj = None
             if dt_obj and dt_obj < cutoff:
                 continue
             out.append(t)
@@ -248,33 +257,39 @@ def sync_investments_to_notion(days: int = 7, include_ibkr: bool = True, include
         try:
             trades = _fetch_ibkr_flex_trades(days=days)
             for tr in trades:
-                # Best-effort mapping (schema depends on Flex query)
-                sym = tr.get("symbol") or tr.get("conid") or tr.get("description") or ""
-                side = (tr.get("buySell") or tr.get("side") or "").upper()
-                side = "BUY" if side.startswith("B") else "SELL" if side.startswith("S") else None
-                qty = _safe_float(tr.get("quantity") or tr.get("qty"))
-                price = _safe_float(tr.get("tradePrice") or tr.get("price"))
-                fees = _safe_float(tr.get("ibCommission") or tr.get("commission") or tr.get("fees"))
-                ccy = tr.get("currency") or tr.get("tradeCurrency")
-                acct = tr.get("accountId") or tr.get("account") or ""
+                lc: dict[str, Any] = tr.get("_lc") or {str(k).lower(): v for k, v in tr.items()}
 
-                dt_raw = str(tr.get("_dt_raw") or tr.get("tradeDateTime") or tr.get("tradeDate") or "")
+                def pick(*keys: str) -> Any:
+                    for k in keys:
+                        if k in lc and lc[k] not in (None, ""):
+                            return lc[k]
+                    return None
+
+                # Best-effort mapping (schema depends on Flex query)
+                sym = pick("symbol", "conid", "description") or ""
+                side = str(pick("buysell", "side") or "").upper()
+                side = "BUY" if side.startswith("B") else "SELL" if side.startswith("S") else None
+                qty = _safe_float(pick("quantity", "qty"))
+                price = _safe_float(pick("tradeprice", "price"))
+                fees = _safe_float(pick("ibcommission", "commission", "fees", "taxes"))
+                ccy = pick("currency", "tradecurrency", "currencyprimary")
+                acct = pick("accountid", "account", "clientaccountid") or ""
+
+                dt_raw = str(tr.get("_dt_raw") or pick("tradedatetime", "datetime", "tradedate", "reportdate") or "")
                 # If we can't parse, store today to avoid failing; but keep raw.
                 date_iso = datetime.now(timezone.utc).date().isoformat()
                 try:
-                    # Try common IBKR formats
-                    for fmt in ("%Y-%m-%d", "%Y%m%d", "%Y-%m-%d %H:%M:%S"):
-                        try:
-                            dt = datetime.strptime(dt_raw[:len(fmt)], fmt).replace(tzinfo=timezone.utc)
-                            date_iso = dt.date().isoformat()
-                            break
-                        except Exception:
-                            continue
+                    from dateutil import parser as date_parser
+
+                    cleaned = dt_raw.replace(";", " ").strip()
+                    if cleaned:
+                        dt = date_parser.parse(cleaned, dayfirst=False, fuzzy=True)
+                        date_iso = (dt.date().isoformat())
                 except Exception:
                     pass
 
-                trade_id = tr.get("tradeID") or tr.get("tradeId") or tr.get("transactionID") or tr.get("transactionId")
-                external_id = f"ibkr:{acct}:{trade_id or json.dumps(tr, sort_keys=True)[:120]}"
+                trade_id = pick("tradeid", "transactionid")
+                external_id = f"ibkr:{acct}:{trade_id or json.dumps(lc, sort_keys=True)[:120]}"
 
                 res = _upsert_transaction(
                     client=client,
@@ -291,7 +306,7 @@ def sync_investments_to_notion(days: int = 7, include_ibkr: bool = True, include
                     fees=fees,
                     currency=str(ccy)[:10] if ccy else None,
                     account=str(acct)[:80] if acct else None,
-                    raw=tr,
+                    raw=lc,
                 )
                 if res["action"] == "created":
                     created += 1
