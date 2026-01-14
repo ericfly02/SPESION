@@ -152,6 +152,7 @@ O simplemente escríbeme lo que necesites."""
 **Finanzas (Tycoon)**
 • /finance - Estado y asignación del portfolio
 • "¿Cómo va mi portfolio?" - Resumen rápido
+• /sync_history [dias] - Backfill de trades (IBKR+Bitget) a Notion (default 365)
 
 **Bienestar (Companion)**
 • /journal - Iniciar entrada de diario
@@ -173,6 +174,55 @@ O simplemente escríbeme lo que necesites."""
 🔒 Tus datos sensibles se procesan localmente"""
         
         await self._reply_safe(update, help_text)
+
+    async def sync_history_command(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+    ) -> None:
+        """Handler para /sync_history - Backfill de trades a Notion."""
+        if not self._check_user_allowed(update.effective_user.id):
+            return
+
+        await self._send_typing(update)
+
+        days = 365
+        try:
+            if getattr(context, "args", None) and context.args:
+                days = max(1, int(context.args[0]))
+        except Exception:
+            days = 365
+
+        try:
+            from src.tools.notion_mcp import setup_transactions_database
+            from src.tools.investments_sync import sync_investments_to_notion
+
+            setup_transactions_database.invoke({"force": False})
+            res = sync_investments_to_notion.invoke(
+                {"days": days, "include_ibkr": True, "include_bitget": True}
+            )
+
+            if isinstance(res, dict) and res.get("success"):
+                msg = (
+                    "💸 **Investment Sync (History)**\n"
+                    f"- Window: last {days} days\n"
+                    f"- Created: {res.get('created', 0)}\n"
+                    f"- Updated: {res.get('updated', 0)}\n"
+                )
+                if res.get("created", 0) == 0 and res.get("updated", 0) == 0:
+                    msg += (
+                        "\n⚠️ Si IBKR sigue en 0: revisa que tu Flex Query tenga "
+                        "**Period != 'Last Business Day'** (necesitas un rango histórico)."
+                    )
+            else:
+                errs = res.get("errors") if isinstance(res, dict) else None
+                err_msg = errs[0] if isinstance(errs, list) and errs else str(res)
+                msg = f"💸 Investment Sync (History): error: {err_msg}"
+
+            await self._reply_safe(update, msg)
+        except Exception as e:
+            logger.error(f"Error en /sync_history: {e}")
+            await self._reply_safe(update, f"Error ejecutando sync histórico: {e}")
     
     async def resumen_command(
         self,
@@ -600,6 +650,7 @@ O simplemente escríbeme lo que necesites."""
         app.add_handler(CommandHandler("resumen", self.resumen_command))
         app.add_handler(CommandHandler("entreno", self.entreno_command))
         app.add_handler(CommandHandler("finance", self.finance_command))
+        app.add_handler(CommandHandler("sync_history", self.sync_history_command))
         app.add_handler(CommandHandler("journal", self.journal_command))
         app.add_handler(CommandHandler("agenda", self.agenda_command))
         app.add_handler(CommandHandler("audit", self.audit_command))
@@ -975,7 +1026,7 @@ O simplemente escríbeme lo que necesites."""
             # Ensure DB exists (idempotent)
             setup_transactions_database.invoke({"force": False})
 
-            res = sync_investments_to_notion.invoke({"days": 2, "include_ibkr": True, "include_bitget": True})
+            res = sync_investments_to_notion.invoke({"days": 1, "include_ibkr": True, "include_bitget": True})
             if isinstance(res, dict) and res.get("success"):
                 msg = (
                     "💸 **Investment Sync**\n"
