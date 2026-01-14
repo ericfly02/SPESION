@@ -117,17 +117,25 @@ def _fetch_ibkr_flex_trades(days: int) -> list[dict[str, Any]]:
         qid = settings.ibkr.flex_query_id
 
         # 1) SendRequest -> reference code
-        send_url = "https://www.interactivebrokers.com/Universal/servlet/FlexStatementService.SendRequest"
-        r = httpx.get(send_url, params={"t": token, "q": qid, "v": "3"}, timeout=30.0)
-        r.raise_for_status()
-        root = ET.fromstring(r.text)
-        ref_code = root.attrib.get("referenceCode") or root.findtext("ReferenceCode")
-        if not ref_code:
-            raise ValueError(f"IBKR Flex SendRequest failed: {r.text[:200]}")
+        # IBKR Flex Web Service frequently returns HTTP 302 to ndcdyn.interactivebrokers.com.
+        # Official behavior: clients should follow redirects.
+        with httpx.Client(
+            follow_redirects=True,
+            timeout=httpx.Timeout(60.0),
+            headers={"User-Agent": "SPESION/1.0"},
+        ) as client:
+            # 1) SendRequest -> reference code
+            send_url = "https://www.interactivebrokers.com/Universal/servlet/FlexStatementService.SendRequest"
+            r = client.get(send_url, params={"t": token, "q": qid, "v": "3"})
+            r.raise_for_status()
+            root = ET.fromstring(r.text)
+            ref_code = root.attrib.get("referenceCode") or root.findtext("ReferenceCode")
+            if not ref_code:
+                raise ValueError(f"IBKR Flex SendRequest failed: {r.text[:300]}")
 
         # 2) GetStatement -> XML payload
         get_url = "https://www.interactivebrokers.com/Universal/servlet/FlexStatementService.GetStatement"
-        r2 = httpx.get(get_url, params={"t": token, "q": ref_code, "v": "3"}, timeout=60.0)
+        r2 = client.get(get_url, params={"t": token, "q": ref_code, "v": "3"})
         r2.raise_for_status()
         root2 = ET.fromstring(r2.text)
 

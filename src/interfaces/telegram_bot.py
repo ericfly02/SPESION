@@ -983,8 +983,15 @@ O simplemente escríbeme lo que necesites."""
                     f"- Updated: {res.get('updated', 0)}\n"
                 )
             else:
-                msg = f"💸 Investment Sync: error: {res}"
-
+                # Mostrar errores de forma compacta
+                errs = None
+                if isinstance(res, dict):
+                    errs = res.get("errors")
+                if isinstance(errs, list) and errs:
+                    msg = f"💸 Investment Sync: error: {errs[0]}"
+                else:
+                    msg = f"💸 Investment Sync: error: {res}"
+                    
             await context.bot.send_message(chat_id=target_chat_id, text=msg, parse_mode="Markdown")
         except TelegramError:
             await context.bot.send_message(chat_id=target_chat_id, text="Investment Sync ejecutado (ver logs).")
