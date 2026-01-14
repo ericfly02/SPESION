@@ -59,11 +59,20 @@ def _upsert_transaction(
 ) -> dict[str, Any]:
     """Upsert by External ID (rich_text equals)."""
     # Query existing
-    existing = client.databases.query(
-        database_id=database_id,
-        filter={"property": "External ID", "rich_text": {"equals": external_id}},
-        page_size=1,
-    )
+    if hasattr(client, "databases") and hasattr(client.databases, "query"):
+        existing = client.databases.query(
+            database_id=database_id,
+            filter={"property": "External ID", "rich_text": {"equals": external_id}},
+            page_size=1,
+        )
+    elif hasattr(client, "data_sources") and hasattr(client.data_sources, "query"):
+        existing = client.data_sources.query(
+            data_source_id=database_id,
+            filter={"property": "External ID", "rich_text": {"equals": external_id}},
+            page_size=1,
+        )
+    else:
+        raise AttributeError("Notion client has no databases.query nor data_sources.query")
 
     props: dict[str, Any] = {
         "Name": {"title": [{"text": {"content": name}}]},
@@ -98,7 +107,10 @@ def _upsert_transaction(
         client.pages.update(page_id=page_id, properties=props)
         return {"action": "updated", "id": page_id}
 
-    created = client.pages.create(parent={"database_id": database_id}, properties=props)
+    try:
+        created = client.pages.create(parent={"database_id": database_id}, properties=props)
+    except Exception:
+        created = client.pages.create(parent={"data_source_id": database_id}, properties=props)
     return {"action": "created", "id": created["id"], "url": created.get("url", "")}
 
 
@@ -133,11 +145,11 @@ def _fetch_ibkr_flex_trades(days: int) -> list[dict[str, Any]]:
             if not ref_code:
                 raise ValueError(f"IBKR Flex SendRequest failed: {r.text[:300]}")
 
-        # 2) GetStatement -> XML payload
-        get_url = "https://www.interactivebrokers.com/Universal/servlet/FlexStatementService.GetStatement"
-        r2 = client.get(get_url, params={"t": token, "q": ref_code, "v": "3"})
-        r2.raise_for_status()
-        root2 = ET.fromstring(r2.text)
+            # 2) GetStatement -> XML payload (must use same client to follow redirects)
+            get_url = "https://www.interactivebrokers.com/Universal/servlet/FlexStatementService.GetStatement"
+            r2 = client.get(get_url, params={"t": token, "q": ref_code, "v": "3"})
+            r2.raise_for_status()
+            root2 = ET.fromstring(r2.text)
 
         # Trades often appear under <Trades> / <Trade> entries (schema depends on query)
         # We keep this resilient: search for any elements whose tag ends with "trade".

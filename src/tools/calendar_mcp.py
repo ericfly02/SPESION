@@ -65,7 +65,25 @@ def _get_calendar_service():
         )
         return None
     except Exception as e:
-        logger.error(f"Error conectando a Google Calendar: {e}")
+        # Caso común: invalid_grant cuando el token fue revocado/expiró
+        msg = str(e)
+        if "invalid_grant" in msg:
+            try:
+                from pathlib import Path
+                token_path = Path("./data/google_token.pickle")
+                if token_path.exists():
+                    token_path.unlink()
+                logger.error(
+                    "Google Calendar: token expirado o revocado (invalid_grant). "
+                    "He borrado ./data/google_token.pickle; reinicia SPESION y vuelve a autenticar."
+                )
+            except Exception:
+                logger.error(
+                    "Google Calendar: token expirado o revocado (invalid_grant). "
+                    "Borra manualmente ./data/google_token.pickle y vuelve a autenticar."
+                )
+        else:
+            logger.error(f"Error conectando a Google Calendar: {e}")
         return None
 
 

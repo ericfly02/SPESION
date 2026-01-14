@@ -134,6 +134,26 @@ def _get_notion_client():
         return None
 
 
+def _query_notion_db(client, database_id: str, **kwargs) -> dict[str, Any]:
+    """Compat wrapper: Notion SDK may expose query under databases.query or data_sources.query."""
+    # Old API
+    if hasattr(client, "databases") and hasattr(client.databases, "query"):
+        return client.databases.query(database_id=database_id, **kwargs)
+    # New API (Data Sources)
+    if hasattr(client, "data_sources") and hasattr(client.data_sources, "query"):
+        return client.data_sources.query(data_source_id=database_id, **kwargs)
+    raise AttributeError("Notion client has no databases.query nor data_sources.query")
+
+
+def _create_page_in_db(client, database_id: str, properties: dict[str, Any]) -> dict[str, Any]:
+    """Compat wrapper for pages.create parent key database_id vs data_source_id."""
+    try:
+        return client.pages.create(parent={"database_id": database_id}, properties=properties)
+    except Exception:
+        # New API might require data_source_id
+        return client.pages.create(parent={"data_source_id": database_id}, properties=properties)
+
+
 # =============================================================================
 # HERRAMIENTAS DE TASKS
 # =============================================================================
@@ -168,8 +188,9 @@ def get_tasks(
                 "status": {"equals": status}
             }
         
-        response = client.databases.query(
-            database_id=settings.notion.tasks_database_id,
+        response = _query_notion_db(
+            client,
+            settings.notion.tasks_database_id,
             filter=filter_obj,
             page_size=limit,
             sorts=[{"property": "Due Date", "direction": "ascending"}],
@@ -244,10 +265,7 @@ def create_task(
         if project:
             properties["Project"] = {"select": {"name": project}}
         
-        response = client.pages.create(
-            parent={"database_id": settings.notion.tasks_database_id},
-            properties=properties,
-        )
+        response = _create_page_in_db(client, settings.notion.tasks_database_id, properties)
         
         return {
             "id": response["id"],
@@ -959,10 +977,7 @@ def log_training_session(
         if zona:
             props["Zona"] = {"select": {"name": zona}}
 
-        page = client.pages.create(
-            parent={"database_id": settings.notion.trainings_database_id},
-            properties=props,
-        )
+        page = _create_page_in_db(client, settings.notion.trainings_database_id, props)
 
         return {"created": True, "id": page["id"], "url": page.get("url", ""), "name": name}
     except Exception as e:
@@ -984,8 +999,9 @@ def get_training_for_date(date: str) -> list[dict[str, Any]]:
         return [{"error": "Trainings database ID no configurado"}]
 
     try:
-        resp = client.databases.query(
-            database_id=settings.notion.trainings_database_id,
+        resp = _query_notion_db(
+            client,
+            settings.notion.trainings_database_id,
             filter={"property": "Data", "date": {"equals": date}},
             page_size=20,
         )
@@ -1108,12 +1124,11 @@ def add_portfolio_holding(
     
     try:
         # Buscar si ya existe para actualizar
-        existing = client.databases.query(
-            database_id=settings.notion.finance_database_id,
-            filter={
-                "property": "Ticker",
-                "title": {"equals": ticker}
-            }
+        existing = _query_notion_db(
+            client,
+            settings.notion.finance_database_id,
+            filter={"property": "Ticker", "title": {"equals": ticker}},
+            page_size=1,
         )
         
         today = datetime.now().strftime("%Y-%m-%d")
@@ -1144,10 +1159,7 @@ def add_portfolio_holding(
             action = "updated"
         else:
             # Crear
-            page_id = client.pages.create(
-                parent={"database_id": settings.notion.finance_database_id},
-                properties=properties
-            )["id"]
+            page_id = _create_page_in_db(client, settings.notion.finance_database_id, properties)["id"]
             action = "created"
             
         return {
@@ -1179,9 +1191,7 @@ def get_portfolio_holdings() -> list[dict[str, Any]]:
         return [{"error": "Finance database ID no configurado"}]
     
     try:
-        response = client.databases.query(
-            database_id=settings.notion.finance_database_id,
-        )
+        response = _query_notion_db(client, settings.notion.finance_database_id)
         
         holdings = []
         for page in response.get("results", []):
@@ -1250,8 +1260,9 @@ def get_transactions(
                 ]
             }
 
-        resp = client.databases.query(
-            database_id=settings.notion.transactions_database_id,
+        resp = _query_notion_db(
+            client,
+            settings.notion.transactions_database_id,
             filter=date_filter,
             page_size=min(limit, 100),
             sorts=[{"property": "Date", "direction": "descending"}],
