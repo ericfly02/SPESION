@@ -151,12 +151,26 @@ def _query_notion_db(client, database_id: str, **kwargs) -> dict[str, Any]:
     # Normalize database ID (add dashes if missing)
     db_id_normalized = _normalize_database_id(database_id)
     
-    # Old API
+    logger.debug(f"Querying Notion database: {db_id_normalized} (original: {database_id})")
+    
+    # Try old API first
     if hasattr(client, "databases") and hasattr(client.databases, "query"):
-        return client.databases.query(database_id=db_id_normalized, **kwargs)
-    # New API (Data Sources)
+        try:
+            return client.databases.query(database_id=db_id_normalized, **kwargs)
+        except Exception as e:
+            error_msg = str(e).lower()
+            # If it's a "not found" error, try the new API
+            if "not found" in error_msg or "object_not_found" in error_msg:
+                logger.debug(f"Old API failed, trying new API: {e}")
+                if hasattr(client, "data_sources") and hasattr(client.data_sources, "query"):
+                    return client.data_sources.query(data_source_id=db_id_normalized, **kwargs)
+            # Re-raise if it's a different error
+            raise
+    
+    # Try new API (Data Sources)
     if hasattr(client, "data_sources") and hasattr(client.data_sources, "query"):
         return client.data_sources.query(data_source_id=db_id_normalized, **kwargs)
+    
     raise AttributeError("Notion client has no databases.query nor data_sources.query")
 
 
@@ -1145,11 +1159,14 @@ def add_portfolio_holding(
     if not settings.notion.finance_database_id:
         return {"error": "Finance database ID no configurado"}
     
+    db_id = settings.notion.finance_database_id
+    db_id_normalized = _normalize_database_id(db_id)
+    
     try:
         # Buscar si ya existe para actualizar
         existing = _query_notion_db(
             client,
-            settings.notion.finance_database_id,
+            db_id,
             filter={"property": "Ticker", "title": {"equals": ticker}},
             page_size=1,
         )
@@ -1182,7 +1199,7 @@ def add_portfolio_holding(
             action = "updated"
         else:
             # Crear
-            page_id = _create_page_in_db(client, settings.notion.finance_database_id, properties)["id"]
+            page_id = _create_page_in_db(client, db_id, properties)["id"]
             action = "created"
             
         return {
@@ -1193,10 +1210,17 @@ def add_portfolio_holding(
         }
         
     except Exception as e:
-        logger.error(f"Error gestionando holding financiero: {e}")
+        error_msg = str(e).lower()
+        logger.error(f"Error gestionando holding financiero en {db_id_normalized}: {e}", exc_info=True)
+        
         if _is_free_blocks_error(e):
             return _free_blocks_error_response()
-        return {"error": str(e)}
+        
+        # Check for database not found errors
+        if "could not find database" in error_msg or "object_not_found" in error_msg or "not found" in error_msg:
+            return {"error": f"Could not find database with ID: {db_id_normalized} (original: {db_id}). Make sure:\n1. The database ID in .env matches the actual Notion database ID\n2. The database is shared with your Notion integration\n3. The integration has access to the root page"}
+        
+        return {"error": f"Error managing portfolio holding: {str(e)}"}
 
 @tool
 def get_portfolio_holdings() -> list[dict[str, Any]]:
@@ -1213,8 +1237,24 @@ def get_portfolio_holdings() -> list[dict[str, Any]]:
     if not settings.notion.finance_database_id:
         return [{"error": "Finance database ID no configurado"}]
     
+    db_id = settings.notion.finance_database_id
+    db_id_normalized = _normalize_database_id(db_id)
+    
+    # Try to verify database exists first
     try:
-        response = _query_notion_db(client, settings.notion.finance_database_id)
+        # Try to retrieve the database to verify it exists
+        if hasattr(client, "databases") and hasattr(client.databases, "retrieve"):
+            try:
+                client.databases.retrieve(database_id=db_id_normalized)
+                logger.debug(f"Finance database verified via retrieve: {db_id_normalized}")
+            except Exception as retrieve_err:
+                logger.warning(f"Could not retrieve finance database {db_id_normalized}: {retrieve_err}")
+                # Continue anyway, might still work with query
+    except Exception:
+        pass  # Ignore verification errors, try query anyway
+    
+    try:
+        response = _query_notion_db(client, db_id)
         
         holdings = []
         for page in response.get("results", []):
@@ -1236,13 +1276,14 @@ def get_portfolio_holdings() -> list[dict[str, Any]]:
         return holdings
         
     except Exception as e:
-        error_msg = str(e)
+        error_msg = str(e).lower()
+        logger.error(f"Error obteniendo holdings de {db_id_normalized}: {e}", exc_info=True)
+        
         # Check for common Notion API errors
-        if "Could not find database" in error_msg or "object_not_found" in error_msg.lower():
-            db_id = settings.notion.finance_database_id
-            return [{"error": f"Could not find database with ID: {db_id}. Make sure the relevant pages and databases are shared with your integration."}]
-        logger.error(f"Error obteniendo holdings: {e}")
-        return [{"error": str(e)}]
+        if "could not find database" in error_msg or "object_not_found" in error_msg or "not found" in error_msg:
+            return [{"error": f"Could not find database with ID: {db_id_normalized} (original: {db_id}). Make sure:\n1. The database ID in .env matches the actual Notion database ID\n2. The database is shared with your Notion integration\n3. The integration has access to the root page"}]
+        
+        return [{"error": f"Error querying finance database: {str(e)}"}]
 
 def create_notion_finance_tools() -> list:
     """Herramientas de Finanzas."""
@@ -1272,6 +1313,9 @@ def get_transactions(
     if not settings.notion.transactions_database_id:
         return [{"error": "Transactions database ID no configurado"}]
 
+    db_id = settings.notion.transactions_database_id
+    db_id_normalized = _normalize_database_id(db_id)
+
     try:
         from datetime import datetime, timedelta
 
@@ -1290,7 +1334,7 @@ def get_transactions(
 
         resp = _query_notion_db(
             client,
-            settings.notion.transactions_database_id,
+            db_id,
             filter=date_filter,
             page_size=min(limit, 100),
             sorts=[{"property": "Date", "direction": "descending"}],
@@ -1325,6 +1369,12 @@ def get_transactions(
 
         return out
     except Exception as e:
-        logger.error(f"Error obteniendo transactions: {e}")
-        return [{"error": str(e)}]
+        error_msg = str(e).lower()
+        logger.error(f"Error obteniendo transactions de {db_id_normalized}: {e}", exc_info=True)
+        
+        # Check for common Notion API errors
+        if "could not find database" in error_msg or "object_not_found" in error_msg or "not found" in error_msg:
+            return [{"error": f"Could not find database with ID: {db_id_normalized} (original: {db_id}). Make sure:\n1. The database ID in .env matches the actual Notion database ID\n2. The database is shared with your Notion integration\n3. The integration has access to the root page"}]
+        
+        return [{"error": f"Error querying transactions database: {str(e)}"}]
 
