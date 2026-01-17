@@ -39,6 +39,16 @@ def _safe_float(x: Any) -> float | None:
         return None
 
 
+def _normalize_database_id(db_id: str) -> str:
+    """Normalize Notion database ID: add dashes if missing."""
+    if not db_id:
+        return db_id
+    clean = db_id.replace("-", "")
+    if len(clean) == 32:
+        return f"{clean[0:8]}-{clean[8:12]}-{clean[12:16]}-{clean[16:20]}-{clean[20:32]}"
+    return db_id
+
+
 def _upsert_transaction(
     *,
     client,
@@ -58,16 +68,19 @@ def _upsert_transaction(
     raw: dict[str, Any],
 ) -> dict[str, Any]:
     """Upsert by External ID (rich_text equals)."""
+    # Normalize database ID
+    db_id_normalized = _normalize_database_id(database_id)
+    
     # Query existing
     if hasattr(client, "databases") and hasattr(client.databases, "query"):
         existing = client.databases.query(
-            database_id=database_id,
+            database_id=db_id_normalized,
             filter={"property": "External ID", "rich_text": {"equals": external_id}},
             page_size=1,
         )
     elif hasattr(client, "data_sources") and hasattr(client.data_sources, "query"):
         existing = client.data_sources.query(
-            data_source_id=database_id,
+            data_source_id=db_id_normalized,
             filter={"property": "External ID", "rich_text": {"equals": external_id}},
             page_size=1,
         )
@@ -108,9 +121,9 @@ def _upsert_transaction(
         return {"action": "updated", "id": page_id}
 
     try:
-        created = client.pages.create(parent={"database_id": database_id}, properties=props)
+        created = client.pages.create(parent={"database_id": db_id_normalized}, properties=props)
     except Exception:
-        created = client.pages.create(parent={"data_source_id": database_id}, properties=props)
+        created = client.pages.create(parent={"data_source_id": db_id_normalized}, properties=props)
     return {"action": "created", "id": created["id"], "url": created.get("url", "")}
 
 

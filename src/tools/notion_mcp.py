@@ -134,24 +134,42 @@ def _get_notion_client():
         return None
 
 
+def _normalize_database_id(db_id: str) -> str:
+    """Normalize Notion database ID: add dashes if missing (format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)."""
+    if not db_id:
+        return db_id
+    # Remove existing dashes
+    clean = db_id.replace("-", "")
+    # Add dashes in the correct positions: 8-4-4-4-12
+    if len(clean) == 32:
+        return f"{clean[0:8]}-{clean[8:12]}-{clean[12:16]}-{clean[16:20]}-{clean[20:32]}"
+    return db_id  # Return as-is if not 32 chars
+
+
 def _query_notion_db(client, database_id: str, **kwargs) -> dict[str, Any]:
     """Compat wrapper: Notion SDK may expose query under databases.query or data_sources.query."""
+    # Normalize database ID (add dashes if missing)
+    db_id_normalized = _normalize_database_id(database_id)
+    
     # Old API
     if hasattr(client, "databases") and hasattr(client.databases, "query"):
-        return client.databases.query(database_id=database_id, **kwargs)
+        return client.databases.query(database_id=db_id_normalized, **kwargs)
     # New API (Data Sources)
     if hasattr(client, "data_sources") and hasattr(client.data_sources, "query"):
-        return client.data_sources.query(data_source_id=database_id, **kwargs)
+        return client.data_sources.query(data_source_id=db_id_normalized, **kwargs)
     raise AttributeError("Notion client has no databases.query nor data_sources.query")
 
 
 def _create_page_in_db(client, database_id: str, properties: dict[str, Any]) -> dict[str, Any]:
     """Compat wrapper for pages.create parent key database_id vs data_source_id."""
+    # Normalize database ID (add dashes if missing)
+    db_id_normalized = _normalize_database_id(database_id)
+    
     try:
-        return client.pages.create(parent={"database_id": database_id}, properties=properties)
+        return client.pages.create(parent={"database_id": db_id_normalized}, properties=properties)
     except Exception:
         # New API might require data_source_id
-        return client.pages.create(parent={"data_source_id": database_id}, properties=properties)
+        return client.pages.create(parent={"data_source_id": db_id_normalized}, properties=properties)
 
 
 # =============================================================================

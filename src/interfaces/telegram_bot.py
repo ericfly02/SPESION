@@ -925,10 +925,13 @@ O simplemente escríbeme lo que necesites."""
             # Reconcile portfolio from Transactions -> Finance Portfolio before snapshot
             try:
                 setup_transactions_database.invoke({"force": False})
-                update_finance_portfolio_from_transactions.invoke({"days": 365, "force_full_rebuild": False})
-            except Exception:
-                # Never break morning brief due to finance sync
-                pass
+                logger.info("Morning Brief: reconciliando portfolio desde Transactions DB...")
+                reconcile_result = update_finance_portfolio_from_transactions.invoke({"days": 365, "force_full_rebuild": False})
+                if isinstance(reconcile_result, dict):
+                    logger.info(f"Morning Brief: portfolio reconciliado - {reconcile_result.get('created', 0)} creados, {reconcile_result.get('updated', 0)} actualizados")
+            except Exception as e:
+                # Never break morning brief due to finance sync, but log the error
+                logger.warning(f"Morning Brief: error reconciliando portfolio: {e}")
 
             holdings = get_portfolio_holdings.invoke({})
 
@@ -1011,7 +1014,7 @@ O simplemente escríbeme lo que necesites."""
             await context.bot.send_message(chat_id=target_chat_id, text="Error generando el morning brief.")
 
     async def send_investment_sync(self, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Sincroniza inversiones (IBKR + Bitget) hacia Notion Transactions DB."""
+        """Sincroniza inversiones (IBKR + Bitget) hacia Notion Transactions DB y actualiza Portfolio."""
         target_chat_id = None
         if self.allowed_users:
             target_chat_id = self.allowed_users[0]
@@ -1022,16 +1025,31 @@ O simplemente escríbeme lo que necesites."""
         try:
             from src.tools.notion_mcp import setup_transactions_database
             from src.tools.investments_sync import sync_investments_to_notion
+            from src.tools.portfolio_reconcile import update_finance_portfolio_from_transactions
 
             # Ensure DB exists (idempotent)
             setup_transactions_database.invoke({"force": False})
 
+            # Sync transactions
             res = sync_investments_to_notion.invoke({"days": 1, "include_ibkr": True, "include_bitget": True})
+            
+            # Reconcile portfolio if transactions were synced
+            portfolio_msg = ""
+            if isinstance(res, dict) and res.get("success") and (res.get("created", 0) > 0 or res.get("updated", 0) > 0):
+                try:
+                    logger.info("Investment Sync: reconciliando portfolio después de sync de transacciones...")
+                    portfolio_res = update_finance_portfolio_from_transactions.invoke({"days": 30, "force_full_rebuild": False})
+                    if isinstance(portfolio_res, dict) and portfolio_res.get("success"):
+                        portfolio_msg = f"\n- Portfolio: {portfolio_res.get('created', 0)} creados, {portfolio_res.get('updated', 0)} actualizados"
+                except Exception as e:
+                    logger.warning(f"Investment Sync: error reconciliando portfolio: {e}")
+                    portfolio_msg = "\n- Portfolio: error al actualizar (ver logs)"
+            
             if isinstance(res, dict) and res.get("success"):
                 msg = (
                     "💸 **Investment Sync**\n"
                     f"- Created: {res.get('created', 0)}\n"
-                    f"- Updated: {res.get('updated', 0)}\n"
+                    f"- Updated: {res.get('updated', 0)}{portfolio_msg}"
                 )
             else:
                 # Mostrar errores de forma compacta
