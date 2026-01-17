@@ -146,9 +146,24 @@ def update_finance_portfolio_from_transactions(
     # Fetch transactions
     from src.tools.notion_mcp import get_transactions, get_portfolio_holdings, add_portfolio_holding
 
+    logger.info(f"Portfolio reconcile: fetching transactions desde {start_date} (mode: {mode})")
     txs = get_transactions.invoke({"start_date": start_date, "limit": 500})
     if isinstance(txs, list) and txs and isinstance(txs[0], dict) and txs[0].get("error"):
         return {"error": txs[0]["error"]}
+    
+    if not txs or len(txs) == 0:
+        logger.warning(f"Portfolio reconcile: no se encontraron transacciones desde {start_date}")
+        return {
+            "success": True,
+            "mode": mode,
+            "start_date": start_date,
+            "created": 0,
+            "updated": 0,
+            "skipped_zero_qty": 0,
+            "message": "No transactions found in the date range",
+        }
+    
+    logger.info(f"Portfolio reconcile: encontradas {len(txs)} transacciones")
 
     # Current holdings map (to preserve category/type when present)
     existing = get_portfolio_holdings.invoke({})
@@ -163,17 +178,31 @@ def update_finance_portfolio_from_transactions(
     fx_missing = 0
 
     # Apply transactions
+    processed_count = 0
+    buy_count = 0
+    sell_count = 0
+    skipped_count = 0
+    
     for tx in (txs or []):
         if not isinstance(tx, dict) or tx.get("error"):
+            skipped_count += 1
             continue
 
         side = (tx.get("side") or "").upper()
         if side not in {"BUY", "SELL"}:
+            skipped_count += 1
             continue
 
         symbol = (tx.get("symbol") or "").strip()
         if not symbol:
+            skipped_count += 1
             continue
+        
+        processed_count += 1
+        if side == "BUY":
+            buy_count += 1
+        else:
+            sell_count += 1
 
         qty = _safe_float(tx.get("quantity"))
         price = _safe_float(tx.get("price"))
@@ -211,6 +240,9 @@ def update_finance_portfolio_from_transactions(
             else:
                 # No position tracked: ignore to avoid corrupting
                 continue
+    
+    logger.info(f"Portfolio reconcile: procesadas {processed_count} transacciones ({buy_count} BUY, {sell_count} SELL, {skipped_count} skipped)")
+    logger.info(f"Portfolio reconcile: calculadas {len(positions)} posiciones únicas")
 
     # Upsert portfolio holdings
     updated = 0
@@ -235,6 +267,8 @@ def update_finance_portfolio_from_transactions(
         category = (prev or {}).get("category") or ("Speculative" if pos.kind == "Crypto" else "Core")
         typ = (prev or {}).get("type") or ("Crypto" if pos.kind == "Crypto" else "Stock")
 
+        logger.debug(f"Portfolio reconcile: upserting {ticker} - qty={pos.qty:.4f}, cost_eur={pos.cost_eur:.2f}, market_value={market_value:.2f}")
+        
         res = add_portfolio_holding.invoke({
             "ticker": ticker,
             "amount": float(market_value),
@@ -248,10 +282,14 @@ def update_finance_portfolio_from_transactions(
         if isinstance(res, dict) and res.get("success"):
             if res.get("action") == "created":
                 created += 1
+                logger.info(f"Portfolio reconcile: creado holding {ticker}")
             else:
                 updated += 1
+                logger.info(f"Portfolio reconcile: actualizado holding {ticker}")
         else:
-            errors.append(str(res))
+            error_msg = str(res)
+            errors.append(error_msg)
+            logger.error(f"Portfolio reconcile: error upserting {ticker}: {error_msg}")
 
     # Save state
     try:
@@ -260,10 +298,15 @@ def update_finance_portfolio_from_transactions(
     except Exception:
         pass
 
-    return {
+    result = {
         "success": len(errors) == 0,
         "mode": mode,
         "start_date": start_date,
+        "transactions_found": len(txs) if txs else 0,
+        "transactions_processed": processed_count,
+        "buy_count": buy_count,
+        "sell_count": sell_count,
+        "positions_calculated": len(positions),
         "created": created,
         "updated": updated,
         "skipped_zero_qty": skipped,
@@ -271,6 +314,10 @@ def update_finance_portfolio_from_transactions(
         "realized_pnl_eur_est": round(realized_pnl_eur, 2),
         "errors": errors[:5],
     }
+    
+    logger.info(f"Portfolio reconcile: completado - {created} creados, {updated} actualizados, {skipped} skipped, {len(errors)} errores")
+    
+    return result
 
 
 def create_portfolio_reconcile_tools() -> list:

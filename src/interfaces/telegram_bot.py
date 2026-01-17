@@ -224,6 +224,58 @@ O simplemente escríbeme lo que necesites."""
             logger.error(f"Error en /sync_history: {e}")
             await self._reply_safe(update, f"Error ejecutando sync histórico: {e}")
     
+    async def reconcile_portfolio_command(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+    ) -> None:
+        """Handler para /reconcile_portfolio - Reconciliación manual del portfolio desde Transactions."""
+        if not self._check_user_allowed(update.effective_user.id):
+            return
+
+        await self._send_typing(update)
+
+        days = 365
+        force = False
+        try:
+            if getattr(context, "args", None) and context.args:
+                days = max(1, int(context.args[0]))
+                if len(context.args) > 1 and context.args[1].lower() in ("force", "true", "1"):
+                    force = True
+        except Exception:
+            days = 365
+
+        try:
+            from src.tools.portfolio_reconcile import update_finance_portfolio_from_transactions
+
+            res = update_finance_portfolio_from_transactions.invoke({
+                "days": days,
+                "force_full_rebuild": force,
+            })
+
+            if isinstance(res, dict):
+                if res.get("success"):
+                    msg = (
+                        f"💰 **Portfolio Reconcile** ({days} días)\n"
+                        f"- Transacciones encontradas: {res.get('transactions_found', 0)}\n"
+                        f"- Transacciones procesadas: {res.get('transactions_processed', 0)}\n"
+                        f"- Posiciones calculadas: {res.get('positions_calculated', 0)}\n"
+                        f"- Created: {res.get('created', 0)}\n"
+                        f"- Updated: {res.get('updated', 0)}\n"
+                        f"- Skipped (zero qty): {res.get('skipped_zero_qty', 0)}"
+                    )
+                    if res.get("errors"):
+                        msg += f"\n- Errores: {len(res['errors'])}"
+                else:
+                    msg = f"💰 Portfolio Reconcile: error: {res.get('error', 'Unknown error')}"
+            else:
+                msg = f"💰 Portfolio Reconcile: respuesta inesperada: {res}"
+
+            await self._reply_safe(update, msg)
+        except Exception as e:
+            logger.error(f"Error en /reconcile_portfolio: {e}", exc_info=True)
+            await self._reply_safe(update, f"Error ejecutando reconcile portfolio: {e}")
+    
     async def resumen_command(
         self,
         update: Update,
@@ -651,6 +703,7 @@ O simplemente escríbeme lo que necesites."""
         app.add_handler(CommandHandler("entreno", self.entreno_command))
         app.add_handler(CommandHandler("finance", self.finance_command))
         app.add_handler(CommandHandler("sync_history", self.sync_history_command))
+        app.add_handler(CommandHandler("reconcile_portfolio", self.reconcile_portfolio_command))
         app.add_handler(CommandHandler("journal", self.journal_command))
         app.add_handler(CommandHandler("agenda", self.agenda_command))
         app.add_handler(CommandHandler("audit", self.audit_command))
