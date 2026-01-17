@@ -149,17 +149,38 @@ def _fetch_ibkr_flex_trades(days: int) -> list[dict[str, Any]]:
             get_url = "https://www.interactivebrokers.com/Universal/servlet/FlexStatementService.GetStatement"
             r2 = client.get(get_url, params={"t": token, "q": ref_code, "v": "3"})
             r2.raise_for_status()
-            root2 = ET.fromstring(r2.text)
+            
+            # Debug: log XML response size and first 500 chars
+            xml_text = r2.text
+            logger.info(f"IBKR Flex GetStatement: recibidos {len(xml_text)} bytes de XML")
+            logger.debug(f"IBKR Flex XML (primeros 500 chars): {xml_text[:500]}")
+            
+            root2 = ET.fromstring(xml_text)
 
         # Trades appear under <Trades> / <Trade> entries
         # XML structure: <Trade dateTime="2025-03-24;04:04:07" tradeDate="2025-03-24" ... />
         trades: list[dict[str, Any]] = []
+        
+        # Debug: count all elements and find Trades container
+        all_tags = {}
+        for elem in root2.iter():
+            tag = elem.tag
+            all_tags[tag] = all_tags.get(tag, 0) + 1
+        
+        logger.info(f"IBKR Flex XML: elementos encontrados: {dict(sorted(all_tags.items()))}")
 
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        logger.info(f"IBKR Flex: cutoff date = {cutoff.isoformat()} (últimos {days} días)")
 
+        # Find all Trade elements - try multiple approaches
+        # Approach 1: Direct iteration (works for most cases)
         for elem in root2.iter():
-            tag = elem.tag.lower()
-            if tag == "trade":  # Exact match for <Trade> elements
+            tag = elem.tag
+            # Handle namespaces: strip namespace prefix if present
+            tag_clean = tag.split("}")[-1] if "}" in tag else tag
+            tag_lower = tag_clean.lower()
+            
+            if tag_lower == "trade":  # Exact match for <Trade> elements
                 row = dict(elem.attrib)
                 row_lc = {str(k).lower(): v for k, v in row.items()}
                 
@@ -174,14 +195,49 @@ def _fetch_ibkr_flex_trades(days: int) -> list[dict[str, Any]]:
                     or row_lc.get("date")
                 )
                 
+                # Debug: log first few trades
+                if len(trades) < 3:
+                    logger.info(f"IBKR Trade #{len(trades)+1}: symbol={row_lc.get('symbol')}, dt_raw={dt_raw}, tradeID={row_lc.get('tradeid')}")
+                
                 # Keep row with lowercase lookup dict for later processing
                 row["_dt_raw"] = dt_raw
                 row["_lc"] = row_lc
                 trades.append(row)
+        
+        # Approach 2: If no trades found, try finding <Trades> container explicitly
+        if len(trades) == 0:
+            logger.warning("IBKR Flex: no se encontraron trades con iter(), intentando buscar <Trades> container")
+            # Try to find Trades element
+            for trades_elem in root2.iter():
+                tag_clean = trades_elem.tag.split("}")[-1] if "}" in trades_elem.tag else trades_elem.tag
+                if tag_clean.lower() == "trades":
+                    logger.info(f"IBKR Flex: encontrado container <Trades> con {len(trades_elem)} hijos")
+                    for trade_elem in trades_elem:
+                        if trade_elem.tag.split("}")[-1].lower() == "trade":
+                            row = dict(trade_elem.attrib)
+                            row_lc = {str(k).lower(): v for k, v in row.items()}
+                            dt_raw = (
+                                row_lc.get("datetime")
+                                or row_lc.get("tradedate")
+                                or row_lc.get("tradedatetime")
+                                or row_lc.get("date/time")
+                                or row_lc.get("reportdate")
+                                or row_lc.get("date")
+                            )
+                            row["_dt_raw"] = dt_raw
+                            row["_lc"] = row_lc
+                            trades.append(row)
+                            if len(trades) <= 3:
+                                logger.info(f"IBKR Trade (via Trades container) #{len(trades)}: symbol={row_lc.get('symbol')}, dt_raw={dt_raw}")
+
+        logger.info(f"IBKR Flex: encontrados {len(trades)} elementos <Trade> en el XML")
 
         # Filter by date - only skip if we can parse date AND it's before cutoff
         # If date parsing fails, include the trade (safer for backfill)
         out: list[dict[str, Any]] = []
+        filtered_out = 0
+        parse_failed = 0
+        
         for t in trades:
             dt_raw = str(t.get("_dt_raw") or "")
             dt_obj: datetime | None = None
@@ -200,14 +256,19 @@ def _fetch_ibkr_flex_trades(days: int) -> list[dict[str, Any]]:
                         
                         # Only filter out if date is definitely before cutoff
                         if dt_obj < cutoff:
+                            filtered_out += 1
+                            if filtered_out <= 3:
+                                logger.debug(f"IBKR Trade filtrado (fecha {dt_obj.isoformat()} < cutoff): {t.get('_lc', {}).get('symbol', '?')}")
                             continue
-                except Exception:
+                except Exception as e:
                     # If date parsing fails, include the trade (safer for backfill)
-                    pass
+                    parse_failed += 1
+                    if parse_failed <= 3:
+                        logger.warning(f"IBKR Trade: fallo parseando fecha '{dt_raw}': {e}, incluyendo trade de todas formas")
             
             out.append(t)
 
-        logger.info(f"IBKR Flex: encontrados {len(out)} trades (de {len(trades)} totales) dentro del rango de {days} días")
+        logger.info(f"IBKR Flex: {len(out)} trades dentro del rango, {filtered_out} filtrados por fecha, {parse_failed} con parse fallido")
         return out
     except Exception as e:
         raise ValueError(f"IBKR Flex error: {e}")
@@ -287,8 +348,15 @@ def sync_investments_to_notion(days: int = 7, include_ibkr: bool = True, include
     # IBKR
     if include_ibkr:
         try:
+            logger.info(f"IBKR Sync: iniciando fetch para últimos {days} días")
             trades = _fetch_ibkr_flex_trades(days=days)
+            logger.info(f"IBKR Sync: procesando {len(trades)} trades para upsert en Notion")
+            
+            processed = 0
             for tr in trades:
+                processed += 1
+                if processed <= 3:
+                    logger.debug(f"IBKR Sync: procesando trade #{processed}: {tr.get('_lc', {}).get('symbol', '?')}")
                 lc: dict[str, Any] = tr.get("_lc") or {str(k).lower(): v for k, v in tr.items()}
 
                 def pick(*keys: str) -> Any:
@@ -347,7 +415,10 @@ def sync_investments_to_notion(days: int = 7, include_ibkr: bool = True, include
                     created += 1
                 else:
                     updated += 1
+            
+            logger.info(f"IBKR Sync: completado - {created} creados, {updated} actualizados")
         except Exception as e:
+            logger.error(f"IBKR Sync error: {e}", exc_info=True)
             errors.append(str(e))
 
     # Bitget
