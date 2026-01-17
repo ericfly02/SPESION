@@ -151,51 +151,63 @@ def _fetch_ibkr_flex_trades(days: int) -> list[dict[str, Any]]:
             r2.raise_for_status()
             root2 = ET.fromstring(r2.text)
 
-        # Trades often appear under <Trades> / <Trade> entries (schema depends on query)
-        # We keep this resilient: search for any elements whose tag ends with "trade".
+        # Trades appear under <Trades> / <Trade> entries
+        # XML structure: <Trade dateTime="2025-03-24;04:04:07" tradeDate="2025-03-24" ... />
         trades: list[dict[str, Any]] = []
 
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
         for elem in root2.iter():
             tag = elem.tag.lower()
-            if tag.endswith("trade"):
+            if tag == "trade":  # Exact match for <Trade> elements
                 row = dict(elem.attrib)
                 row_lc = {str(k).lower(): v for k, v in row.items()}
-                # Try parse datetime-ish fields
+                
+                # IBKR Flex XML uses: dateTime (with semicolon) or tradeDate (YYYY-MM-DD)
+                # Priority: dateTime > tradeDate > other date fields
                 dt_raw = (
-                    row_lc.get("tradedatetime")
-                    or row_lc.get("datetime")
-                    or row_lc.get("date/time")
+                    row_lc.get("datetime")  # dateTime becomes datetime (lowercase)
                     or row_lc.get("tradedate")
+                    or row_lc.get("tradedatetime")
+                    or row_lc.get("date/time")
                     or row_lc.get("reportdate")
                     or row_lc.get("date")
                 )
-                # Keep row; date parsing will be done later if possible
+                
+                # Keep row with lowercase lookup dict for later processing
                 row["_dt_raw"] = dt_raw
                 row["_lc"] = row_lc
                 trades.append(row)
 
-        # Basic filtering (dateutil) – your Flex query uses yyyy-MM-dd and DateTime separator ';'
+        # Filter by date - only skip if we can parse date AND it's before cutoff
+        # If date parsing fails, include the trade (safer for backfill)
         out: list[dict[str, Any]] = []
         for t in trades:
             dt_raw = str(t.get("_dt_raw") or "")
             dt_obj: datetime | None = None
-            try:
-                from dateutil import parser as date_parser
+            
+            if dt_raw:
+                try:
+                    from dateutil import parser as date_parser
 
-                cleaned = dt_raw.replace(";", " ").strip()
-                if cleaned:
-                    # dayfirst=False because your query uses yyyy-MM-dd
-                    dt_obj = date_parser.parse(cleaned, dayfirst=False, fuzzy=True)
-                    if dt_obj.tzinfo is None:
-                        dt_obj = dt_obj.replace(tzinfo=timezone.utc)
-            except Exception:
-                dt_obj = None
-            if dt_obj and dt_obj < cutoff:
-                continue
+                    # IBKR uses semicolon separator: "2025-03-24;04:04:07" or just "2025-03-24"
+                    cleaned = dt_raw.replace(";", " ").strip()
+                    if cleaned:
+                        # dayfirst=False because IBKR uses YYYY-MM-DD format
+                        dt_obj = date_parser.parse(cleaned, dayfirst=False, fuzzy=True)
+                        if dt_obj.tzinfo is None:
+                            dt_obj = dt_obj.replace(tzinfo=timezone.utc)
+                        
+                        # Only filter out if date is definitely before cutoff
+                        if dt_obj < cutoff:
+                            continue
+                except Exception:
+                    # If date parsing fails, include the trade (safer for backfill)
+                    pass
+            
             out.append(t)
 
+        logger.info(f"IBKR Flex: encontrados {len(out)} trades (de {len(trades)} totales) dentro del rango de {days} días")
         return out
     except Exception as e:
         raise ValueError(f"IBKR Flex error: {e}")
@@ -285,7 +297,8 @@ def sync_investments_to_notion(days: int = 7, include_ibkr: bool = True, include
                             return lc[k]
                     return None
 
-                # Best-effort mapping (schema depends on Flex query)
+                # IBKR Flex XML attribute mapping (case-insensitive via _lc dict)
+                # XML: <Trade tradeID="..." buySell="BUY" tradePrice="4.29" quantity="67" ... />
                 sym = pick("symbol", "conid", "description") or ""
                 side = str(pick("buysell", "side") or "").upper()
                 side = "BUY" if side.startswith("B") else "SELL" if side.startswith("S") else None
@@ -295,8 +308,8 @@ def sync_investments_to_notion(days: int = 7, include_ibkr: bool = True, include
                 ccy = pick("currency", "tradecurrency", "currencyprimary")
                 acct = pick("accountid", "account", "clientaccountid") or ""
 
-                dt_raw = str(tr.get("_dt_raw") or pick("tradedatetime", "datetime", "tradedate", "reportdate") or "")
-                # If we can't parse, store today to avoid failing; but keep raw.
+                # Date parsing: use _dt_raw (already extracted) or fallback
+                dt_raw = str(tr.get("_dt_raw") or pick("datetime", "tradedate", "tradedatetime", "reportdate") or "")
                 date_iso = datetime.now(timezone.utc).date().isoformat()
                 try:
                     from dateutil import parser as date_parser
@@ -304,10 +317,12 @@ def sync_investments_to_notion(days: int = 7, include_ibkr: bool = True, include
                     cleaned = dt_raw.replace(";", " ").strip()
                     if cleaned:
                         dt = date_parser.parse(cleaned, dayfirst=False, fuzzy=True)
-                        date_iso = (dt.date().isoformat())
+                        date_iso = dt.date().isoformat()
                 except Exception:
+                    # Fallback to today if parsing fails
                     pass
 
+                # Trade ID: IBKR uses tradeID (or transactionID in some cases)
                 trade_id = pick("tradeid", "transactionid")
                 external_id = f"ibkr:{acct}:{trade_id or json.dumps(lc, sort_keys=True)[:120]}"
 

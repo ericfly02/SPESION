@@ -1032,6 +1032,11 @@ def get_training_for_date(date: str) -> list[dict[str, Any]]:
 
         return out
     except Exception as e:
+        error_msg = str(e)
+        # Check for common Notion API errors
+        if "Could not find database" in error_msg or "object_not_found" in error_msg.lower():
+            db_id = settings.notion.trainings_database_id
+            return [{"error": f"Could not find database with ID: {db_id}. Make sure the relevant pages and databases are shared with your integration."}]
         logger.error(f"Error obteniendo entrenos: {e}")
         return [{"error": str(e)}]
 
@@ -1213,6 +1218,11 @@ def get_portfolio_holdings() -> list[dict[str, Any]]:
         return holdings
         
     except Exception as e:
+        error_msg = str(e)
+        # Check for common Notion API errors
+        if "Could not find database" in error_msg or "object_not_found" in error_msg.lower():
+            db_id = settings.notion.finance_database_id
+            return [{"error": f"Could not find database with ID: {db_id}. Make sure the relevant pages and databases are shared with your integration."}]
         logger.error(f"Error obteniendo holdings: {e}")
         return [{"error": str(e)}]
 
