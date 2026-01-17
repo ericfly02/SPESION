@@ -144,11 +144,43 @@ def _fetch_ibkr_flex_trades(days: int) -> list[dict[str, Any]]:
             ref_code = root.attrib.get("referenceCode") or root.findtext("ReferenceCode")
             if not ref_code:
                 raise ValueError(f"IBKR Flex SendRequest failed: {r.text[:300]}")
+            
+            logger.info(f"IBKR Flex SendRequest: reference code = {ref_code}")
 
             # 2) GetStatement -> XML payload (must use same client to follow redirects)
+            # IBKR statements can take a few seconds to generate, so we wait and retry if needed
+            import time
             get_url = "https://www.interactivebrokers.com/Universal/servlet/FlexStatementService.GetStatement"
-            r2 = client.get(get_url, params={"t": token, "q": ref_code, "v": "3"})
-            r2.raise_for_status()
+            
+            max_retries = 3
+            wait_seconds = 5
+            r2 = None
+            
+            for attempt in range(max_retries):
+                if attempt > 0:
+                    logger.info(f"IBKR Flex GetStatement: intento {attempt + 1}/{max_retries}, esperando {wait_seconds}s...")
+                    time.sleep(wait_seconds)
+                
+                r2 = client.get(get_url, params={"t": token, "q": ref_code, "v": "3"})
+                r2.raise_for_status()
+                
+                # Quick check: if response is very small (< 500 bytes), it's likely an error
+                # Wait and retry
+                if len(r2.text) < 500:
+                    xml_preview = ET.fromstring(r2.text)
+                    error_elem = xml_preview.find(".//ErrorCode")
+                    if error_elem is not None:
+                        error_code = error_elem.text
+                        # Error 1019 = "Statement generation in progress"
+                        if error_code == "1019" and attempt < max_retries - 1:
+                            logger.warning(f"IBKR Flex: statement aún generándose (error 1019), reintentando...")
+                            continue
+                
+                # If we got here, either it's ready or it's a different error
+                break
+            
+            if r2 is None:
+                raise ValueError("IBKR Flex GetStatement: no se pudo obtener el statement después de varios intentos")
             
             # Debug: log XML response size and first 500 chars
             xml_text = r2.text
@@ -156,6 +188,28 @@ def _fetch_ibkr_flex_trades(days: int) -> list[dict[str, Any]]:
             logger.debug(f"IBKR Flex XML (primeros 500 chars): {xml_text[:500]}")
             
             root2 = ET.fromstring(xml_text)
+            
+            # Check for error response from IBKR BEFORE processing trades
+            error_code_elem = root2.find(".//ErrorCode")
+            error_msg_elem = root2.find(".//ErrorMessage")
+            status_elem = root2.find(".//Status")
+            
+            if error_code_elem is not None or error_msg_elem is not None:
+                error_code = error_code_elem.text if error_code_elem is not None else "Unknown"
+                error_msg = error_msg_elem.text if error_msg_elem is not None else "No error message"
+                status = status_elem.text if status_elem is not None else "Unknown"
+                
+                error_detail = f"IBKR Flex Error: Code={error_code}, Status={status}, Message={error_msg}"
+                logger.error(error_detail)
+                logger.error(f"IBKR Flex XML completo: {xml_text}")
+                
+                # Common issues and solutions
+                if "1019" in str(error_code) or "not ready" in error_msg.lower():
+                    error_detail += " (El statement aún no está listo. Espera 10-30 segundos y vuelve a intentar.)"
+                elif "1018" in str(error_code) or "invalid" in error_msg.lower():
+                    error_detail += " (Query ID inválido o token expirado. Verifica IBKR_FLEX_QUERY_ID y IBKR_FLEX_TOKEN.)"
+                
+                raise ValueError(error_detail)
 
         # Trades appear under <Trades> / <Trade> entries
         # XML structure: <Trade dateTime="2025-03-24;04:04:07" tradeDate="2025-03-24" ... />
