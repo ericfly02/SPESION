@@ -108,7 +108,7 @@ def _state_path() -> Path:
 
 @tool
 def update_finance_portfolio_from_transactions(
-    days: int = 365,
+    days: int | None = None,
     force_full_rebuild: bool = False,
 ) -> dict[str, Any]:
     """Updates Finance Portfolio DB using Transactions DB as source-of-truth.
@@ -127,6 +127,8 @@ def update_finance_portfolio_from_transactions(
     # Determine start_date window
     start_date: str
     last_run: str | None = None
+    
+    # Check state unless forced rebuild
     if not force_full_rebuild:
         try:
             payload = json.loads(_state_path().read_text(encoding="utf-8"))
@@ -134,14 +136,23 @@ def update_finance_portfolio_from_transactions(
         except Exception:
             last_run = None
 
-    if last_run and not force_full_rebuild:
+    # Logic:
+    # 1. If days provided (explicit override) -> Windowed mode (ignore last_run)
+    # 2. If last_run exists -> Incremental mode
+    # 3. Default -> Windowed mode (365 days)
+    
+    if days is not None:
+        start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        mode = "windowed_explicit"
+    elif last_run and not force_full_rebuild:
         # Re-run 1 day overlap for safety
         dt = datetime.strptime(last_run, "%Y-%m-%d") - timedelta(days=1)
         start_date = dt.strftime("%Y-%m-%d")
         mode = "incremental"
     else:
-        start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-        mode = "windowed"
+        # Default fallback
+        start_date = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+        mode = "windowed_default"
 
     # Fetch transactions
     from src.tools.notion_mcp import get_transactions, get_portfolio_holdings, add_portfolio_holding
