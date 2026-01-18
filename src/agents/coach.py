@@ -157,6 +157,7 @@ def create_coach_agent(
         log_training_session,
         get_training_for_date,
     )
+    from src.features.smart_wake import set_manual_wake_window
     
     default_tools = [
         *create_garmin_tools(),
@@ -167,6 +168,8 @@ def create_coach_agent(
         setup_trainings_database,
         log_training_session,
         get_training_for_date,
+        # Smart Wake
+        set_manual_wake_window,
     ]
     
     all_tools = default_tools + (tools or [])

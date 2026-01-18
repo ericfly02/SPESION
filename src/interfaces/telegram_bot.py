@@ -771,9 +771,46 @@ O simplemente escríbeme lo que necesites."""
                     "max_instances": 1,
                 },
             )
+
+            # Nightly Wake Prompt (00:00)
+            app.job_queue.run_daily(
+                self.nightly_wake_prompt,
+                time=time(hour=0, minute=0, tzinfo=tz),
+                days=(0, 1, 2, 3, 4, 5, 6),
+                name="nightly_wake_prompt",
+            )
+
+            # Schedule initial wake check (default 8:30)
+            # Esto corre CADA VEZ que inicia el bot.
+            # En producción ideal: persistir el job. Aquí simplificamos repitiendo lógica.
+            self._schedule_wake_check(app.job_queue)
         
         self._app = app
         return app
+
+    def _schedule_wake_check(self, job_queue) -> None:
+        """Programa el job de chequeo de sueño para el día siguiente/actual."""
+        try:
+            from src.features.smart_wake import _get_active_window
+            start_str, _ = _get_active_window()
+            h, m = map(int, start_str.split(":"))
+            
+            # Quitar jobs anteriores para evitar duplicados si se reprograma
+            current_jobs = job_queue.get_jobs_by_name("push_wake_time_job")
+            for job in current_jobs:
+                job.schedule_removal()
+                
+            tz = ZoneInfo("Europe/Madrid") if ZoneInfo else None
+            
+            job_queue.run_daily(
+                self.push_wake_time_job,
+                time=time(hour=h, minute=m, tzinfo=tz),
+                days=(0, 1, 2, 3, 4, 5, 6),
+                name="push_wake_time_job",
+            )
+            logger.info(f"Smart Wake Check programado a las {h:02d}:{m:02d}")
+        except Exception as e:
+            logger.error(f"Error scheduling wake check: {e}")
 
     async def _send_long_message(self, chat_id: int, text: str, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Envía un mensaje largo dividiéndolo en fragmentos seguros."""
@@ -1119,6 +1156,50 @@ O simplemente escríbeme lo que necesites."""
             await context.bot.send_message(chat_id=target_chat_id, text="Investment Sync ejecutado (ver logs).")
         except Exception as e:
             logger.error(f"Error en investment sync: {e}")
+
+    async def nightly_wake_prompt(self, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Mensaje nocturno: Pregunta a qué hora despertar mañana."""
+        target_chat_id = None
+        if self.allowed_users:
+            target_chat_id = self.allowed_users[0]
+        else:
+            return
+
+        # Verificar si ya se seteó ventana manual hoy (para mañana)
+        from src.features.smart_wake import _get_active_window, _load_prefs
+        prefs = _load_prefs()
+        manual = prefs.get("manual_window")
+        last_set = manual.get("date") if manual else None
+        
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        
+        # Si ya configuró hoy manual, no molestar
+        if last_set == today_str:
+            return
+
+        try:
+            await context.bot.send_message(
+                chat_id=target_chat_id,
+                text="🌜 **Smart Wake Up**\nHola Eric, ¿a qué hora quieres despertar mañana? (o ignora para usar default 8:30-8:50)",
+            )
+        except Exception as e:
+            logger.error(f"Error en nightly wake prompt: {e}")
+
+    async def push_wake_time_job(self, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Job automático: Empujar hora de despertar a Make."""
+        try:
+            from src.features.smart_wake import push_wake_time_to_make
+            # Pasamos el asistente para que el LLM pueda decidir
+            result_msg = await push_wake_time_to_make(self.assistant)
+            logger.info(f"Smart Wake Push Job: {result_msg}")
+            
+            # Opcional: Notificar al usuario (debugging) o dejar silencioso
+            # target_chat_id = self.allowed_users[0] if self.allowed_users else None
+            # if target_chat_id:
+            #     await context.bot.send_message(chat_id=target_chat_id, text=f"🔧 {result_msg}")
+                
+        except Exception as e:
+            logger.error(f"Error en push wake time job: {e}")
 
     def run(self) -> None:
         """Ejecuta el bot en modo polling."""
