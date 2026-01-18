@@ -41,6 +41,8 @@ class NotionSetupService:
         # NOTE: Goals DB disabled to reduce Notion block usage on free plans.
         # Use ChromaDB / memory instead for goals.
         ids["pills"] = self._create_pills_db(root_id)
+        ids["trainings"] = self._create_trainings_db(root_id)
+        ids["transactions"] = self._create_transactions_db(root_id)
 
         # 3. Update .env file (por defecto: NO sobrescribir IDs existentes)
         self._update_env_file(ids, overwrite=overwrite_env)

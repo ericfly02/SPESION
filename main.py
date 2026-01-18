@@ -214,6 +214,11 @@ Ejemplos:
         help="Configurar entorno inicial (descargar modelos, etc.)",
     )
     parser.add_argument(
+        "--setup-notion",
+        action="store_true",
+        help="Re-inicializar estructura de Notion (CUIDADO: Sobreescribe IDs en .env)",
+    )
+    parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -250,6 +255,30 @@ Ejemplos:
             logger.info("Copia .env.example a .env y configura las variables")
         
         logger.info("Setup completado")
+        return
+
+    # Modo setup Notion
+    if args.setup_notion:
+        try:
+            from src.core.config import settings
+            from src.services.notion_setup import NotionSetupService
+            
+            if not settings.notion.api_key:
+                logger.error("NOTION_API_KEY no encontrada en .env")
+                sys.exit(1)
+                
+            logger.info("Iniciando configuración de Notion...")
+            logger.warning("⚠️  Esto creará nuevas bases de datos y sobreescribirá el .env")
+            
+            service = NotionSetupService(settings.notion.api_key.get_secret_value())
+            ids = service.initialize_workspace(overwrite_env=True)
+            
+            logger.info("✅ Setup de Notion completado exitosamente.")
+            logger.info(f"Nuevos IDs guardados en .env: {list(ids.keys())}")
+            
+        except Exception as e:
+            logger.error(f"Error durante el setup de Notion: {e}")
+            sys.exit(1)
         return
     
     # Verificar token de Telegram si no es CLI

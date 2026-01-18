@@ -193,7 +193,7 @@ def _create_page_in_db(client, database_id: str, properties: dict[str, Any]) -> 
 @tool
 def get_tasks(
     status: str | None = None,
-    limit: int = 20,
+    limit: int | None = 20,
 ) -> list[dict[str, Any]]:
     """Obtiene tareas de la base de datos de Tasks.
     
@@ -224,7 +224,7 @@ def get_tasks(
             client,
             settings.notion.tasks_database_id,
             filter=filter_obj,
-            page_size=limit,
+            page_size=limit if limit is not None else 20,
             sorts=[{"property": "Due Date", "direction": "ascending"}],
         )
         
