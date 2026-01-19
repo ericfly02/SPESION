@@ -147,19 +147,19 @@ def _normalize_database_id(db_id: str) -> str:
 
 
 def _query_notion_db(client, database_id: str, **kwargs) -> dict[str, Any]:
-    """Query a Notion database using client.request to bypass SDK version issues."""
-    # Normalize database ID (add dashes if missing)
-    db_id_normalized = _normalize_database_id(database_id)
-    
-    logger.debug(f"Querying Notion database: {db_id_normalized} (original: {database_id})")
-    
-    # Use the low-level client.request to avoid "DatabasesEndpoint has no attribute query"
-    # which seems to happen in some environments/versions
-    return client.request(
-        path=f"databases/{db_id_normalized}/query",
-        method="POST",
-        body=kwargs,
-    )
+    """Query a Notion database using the official SDK."""
+    # The SDK handles dashes automatically, no need to normalize manually
+    # unless the ID is malformed.
+    try:
+        return client.databases.query(database_id=database_id, **kwargs)
+    except AttributeError:
+        # Fallback only if using an ancient SDK version
+        db_id_normalized = _normalize_database_id(database_id)
+        return client.request(
+            path=f"databases/{db_id_normalized}/query",
+            method="POST",
+            body=kwargs,
+        )
 
 
 def _create_page_in_db(client, database_id: str, properties: dict[str, Any]) -> dict[str, Any]:
