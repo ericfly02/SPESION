@@ -147,43 +147,27 @@ def _normalize_database_id(db_id: str) -> str:
 
 
 def _query_notion_db(client, database_id: str, **kwargs) -> dict[str, Any]:
-    """Compat wrapper: Notion SDK may expose query under databases.query or data_sources.query."""
+    """Query a Notion database using client.request to bypass SDK version issues."""
     # Normalize database ID (add dashes if missing)
     db_id_normalized = _normalize_database_id(database_id)
     
     logger.debug(f"Querying Notion database: {db_id_normalized} (original: {database_id})")
     
-    # Try old API first
-    if hasattr(client, "databases") and hasattr(client.databases, "query"):
-        try:
-            return client.databases.query(database_id=db_id_normalized, **kwargs)
-        except Exception as e:
-            error_msg = str(e).lower()
-            # If it's a "not found" error, try the new API
-            if "not found" in error_msg or "object_not_found" in error_msg:
-                logger.debug(f"Old API failed, trying new API: {e}")
-                if hasattr(client, "data_sources") and hasattr(client.data_sources, "query"):
-                    return client.data_sources.query(data_source_id=db_id_normalized, **kwargs)
-            # Re-raise if it's a different error
-            raise
-    
-    # Try new API (Data Sources)
-    if hasattr(client, "data_sources") and hasattr(client.data_sources, "query"):
-        return client.data_sources.query(data_source_id=db_id_normalized, **kwargs)
-    
-    raise AttributeError("Notion client has no databases.query nor data_sources.query")
+    # Use the low-level client.request to avoid "DatabasesEndpoint has no attribute query"
+    # which seems to happen in some environments/versions
+    return client.request(
+        path=f"databases/{db_id_normalized}/query",
+        method="POST",
+        body=kwargs,
+    )
 
 
 def _create_page_in_db(client, database_id: str, properties: dict[str, Any]) -> dict[str, Any]:
-    """Compat wrapper for pages.create parent key database_id vs data_source_id."""
+    """Create a page in a database."""
     # Normalize database ID (add dashes if missing)
     db_id_normalized = _normalize_database_id(database_id)
     
-    try:
-        return client.pages.create(parent={"database_id": db_id_normalized}, properties=properties)
-    except Exception:
-        # New API might require data_source_id
-        return client.pages.create(parent={"data_source_id": db_id_normalized}, properties=properties)
+    return client.pages.create(parent={"database_id": db_id_normalized}, properties=properties)
 
 
 # =============================================================================
