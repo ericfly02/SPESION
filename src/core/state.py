@@ -49,11 +49,23 @@ class PrivacyState(TypedDict):
     use_local_llm: bool
 
 
+class CognitiveState(TypedDict):
+    """State for the cognitive loop (SPESION 3.0)."""
+
+    reflection_pending: bool
+    last_reflection: str | None
+    patterns_detected: list[str]
+    ideas_generated: list[str]
+    compaction_count: int
+
+
 class AgentState(TypedDict):
     """Estado compartido del grafo LangGraph.
     
     Este TypedDict define el estado que fluye entre todos los nodos
     del grafo. Cada agente puede leer y modificar este estado.
+
+    SPESION 3.0: Added workspace_context, cognitive state, model tracking.
     """
     
     # Mensajes de la conversación (con reducción automática)
@@ -74,6 +86,19 @@ class AgentState(TypedDict):
     
     # RAG Context
     retrieved_context: list[str]
+    
+    # Workspace context (SPESION 3.0) — injected from workspace files
+    workspace_context: str
+    
+    # Cognitive loop state (SPESION 3.0)
+    cognitive: CognitiveState
+    
+    # Model tracking (SPESION 3.0) — which model is being used
+    model_key: str | None
+    
+    # Autonomous execution (SPESION 3.0) — plan tracking
+    active_plan_id: str | None
+    pending_approval_step: str | None
     
     # Metadatos de la sesión
     session_id: str
@@ -118,6 +143,15 @@ def create_initial_state(
             use_local_llm=False,
         ),
         retrieved_context=[],
+        workspace_context="",
+        cognitive=CognitiveState(
+            reflection_pending=False,
+            last_reflection=None,
+            patterns_detected=[],
+            ideas_generated=[],
+            compaction_count=0,
+        ),
+        model_key=None,
         session_id=session_id,
         telegram_chat_id=telegram_chat_id,
         is_voice_message=False,

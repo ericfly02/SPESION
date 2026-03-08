@@ -93,12 +93,12 @@ Responde SOLO con el nombre del agente."""
         descriptions = {
             "scholar": "Papers, investigación, noticias tech",
             "coach": "Fitness, Garmin, Strava, entrenamiento",
-            "tycoon": "Portfolio, inversiones, finanzas",
+            "tycoon": "Portfolio, inversiones, finanzas, crypto",
             "companion": "Emociones, journaling, apoyo",
-            "techlead": "Código, debugging, arquitectura",
+            "techlead": "Código, debugging, arquitectura, GitHub",
             "connector": "Networking, contactos, eventos",
-            "executive": "Calendario, tareas, productividad",
-            "sentinel": "Sistema, privacidad, auditoría",
+            "executive": "Calendario, tareas, productividad, llamadas telefónicas, emails, quejas, acciones autónomas en el mundo real",
+            "sentinel": "Sistema, privacidad, auditoría, setup",
         }
         return descriptions.get(agent, "Desconocido")
     
@@ -216,6 +216,23 @@ Responde SOLO con el nombre del agente."""
             "status": "sentinel",
             "backup": "sentinel",
             "sentinel": "sentinel",
+            # SPESION 3.0: Autonomous action keywords → executive
+            "llama a": "executive",
+            "llamar a": "executive",
+            "call ": "executive",
+            "phone": "executive",
+            "email": "executive",
+            "envía un email": "executive",
+            "envia un email": "executive",
+            "send email": "executive",
+            "escribe un email": "executive",
+            "queja": "executive",
+            "reclamación": "executive",
+            "reclamacion": "executive",
+            "complaint": "executive",
+            "factura": "executive",
+            "receipt": "executive",
+            "reclamo": "executive",
             # NOTION: deliberadamente NO routeamos "notion" por keyword.
             # Solo lo hacemos arriba cuando es explícito (setup) o creación (executive).
         }
@@ -268,6 +285,17 @@ Responde SOLO con el nombre del agente."""
         Returns:
             Estado actualizado
         """
+        # Respect forced routing (agent_hint from Discord channel or API)
+        pre_set = state.get("next_agent")
+        valid_agents = {
+            "sentinel", "scholar", "coach", "tycoon", "companion",
+            "techlead", "connector", "executive",
+        }
+        if pre_set and pre_set in valid_agents:
+            logger.info(f"Forced routing to agent: {pre_set}")
+            state["sender"] = "supervisor"
+            return state
+
         next_agent = self.route(state)
         
         if next_agent == "supervisor" or next_agent == "__end__":
@@ -330,15 +358,24 @@ Responde SOLO con el nombre del agente."""
 def create_supervisor(llm: BaseChatModel | None = None) -> Supervisor:
     """Factory function para crear el Supervisor.
     
+    SPESION 3.0: Uses ModelRouter for supervisor LLM selection.
+    Supervisor uses TRIVIAL complexity (fast local model for routing).
+    
     Args:
-        llm: LLM a usar (default: Ollama local para rapidez)
+        llm: LLM a usar (default: via ModelRouter)
         
     Returns:
         Instancia del Supervisor
     """
     if llm is None:
-        from src.services.llm_factory import get_llm, TaskType
-        llm = get_llm(task_type=TaskType.GENERAL, temperature=0.3)
+        try:
+            from src.core.model_router import get_model_router
+            router = get_model_router()
+            llm = router.get_llm(agent_name="supervisor", temperature=0.3)
+        except Exception:
+            # Fallback to old factory
+            from src.services.llm_factory import get_llm, TaskType
+            llm = get_llm(task_type=TaskType.GENERAL, temperature=0.3)
     
     return Supervisor(llm=llm)
 

@@ -1,4 +1,7 @@
-# SPESION - Docker Compose Configuration
+# SPESION 3.0 - Docker Compose Configuration
+# Usage:
+#   Development : docker compose up
+#   Production  : docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 version: '3.8'
 
 services:
@@ -11,6 +14,8 @@ services:
       dockerfile: docker/Dockerfile
     container_name: spesion
     restart: unless-stopped
+    ports:
+      - "8100:8100"
     environment:
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
@@ -22,25 +27,70 @@ services:
       # Telegram
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_ALLOWED_USER_IDS=${TELEGRAM_ALLOWED_USER_IDS}
-      # APIs
+      # Discord
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - DISCORD_GUILD_ID=${DISCORD_GUILD_ID}
+      # Notion
       - NOTION_API_KEY=${NOTION_API_KEY}
+      - NOTION_TASKS_DATABASE_ID=${NOTION_TASKS_DATABASE_ID}
+      - NOTION_JOURNAL_DATABASE_ID=${NOTION_JOURNAL_DATABASE_ID}
+      - NOTION_CRM_DATABASE_ID=${NOTION_CRM_DATABASE_ID}
+      - NOTION_BOOKS_DATABASE_ID=${NOTION_BOOKS_DATABASE_ID}
+      - NOTION_TRAININGS_DATABASE_ID=${NOTION_TRAININGS_DATABASE_ID}
+      - NOTION_FINANCE_DATABASE_ID=${NOTION_FINANCE_DATABASE_ID}
+      - NOTION_TRANSACTIONS_DATABASE_ID=${NOTION_TRANSACTIONS_DATABASE_ID}
+      # Garmin
       - GARMIN_EMAIL=${GARMIN_EMAIL}
       - GARMIN_PASSWORD=${GARMIN_PASSWORD}
-      - STRAVA_CLIENT_ID=${STRAVA_CLIENT_ID}
-      - STRAVA_CLIENT_SECRET=${STRAVA_CLIENT_SECRET}
-      - STRAVA_REFRESH_TOKEN=${STRAVA_REFRESH_TOKEN}
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      # IBKR
+      - IBKR_FLEX_TOKEN=${IBKR_FLEX_TOKEN}
+      - IBKR_FLEX_QUERY_ID=${IBKR_FLEX_QUERY_ID}
+      # Twilio (Autonomous phone calls / SMS)
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
+      - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER}
+      - TWILIO_CALLBACK_URL=${TWILIO_CALLBACK_URL}
+      # SMTP (Autonomous email)
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME}
+      # Autonomous engine
+      - AUTONOMOUS_ENABLED=${AUTONOMOUS_ENABLED:-true}
+      - AUTONOMOUS_APPROVAL_TIMEOUT_SECONDS=${AUTONOMOUS_APPROVAL_TIMEOUT_SECONDS:-300}
+      - AUTONOMOUS_MAX_PLAN_STEPS=${AUTONOMOUS_MAX_PLAN_STEPS:-15}
+      - AUTONOMOUS_BACKGROUND_WORKER_ENABLED=${AUTONOMOUS_BACKGROUND_WORKER_ENABLED:-true}
+      # Search
       - TAVILY_API_KEY=${TAVILY_API_KEY}
-      # Storage
+      # GitHub
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      # API security
+      - SPESION_API_KEY=${SPESION_API_KEY}
+      - SPESION_HOST=0.0.0.0
+      - SPESION_PORT=8100
+      # Heartbeat
+      - HEARTBEAT_ENABLED=${HEARTBEAT_ENABLED:-true}
+      - HEARTBEAT_TIMEZONE=${HEARTBEAT_TIMEZONE:-Europe/Madrid}
+      # Storage paths (inside container)
       - CHROMA_PERSIST_DIR=/app/data/chroma
       - SQLITE_DB_PATH=/app/data/spesion.db
+      - GOOGLE_CREDENTIALS_PATH=/app/data/google_calendar_credentials.json
     volumes:
-      - spesion-data:/app/data
-      - /var/run/docker.sock:/var/run/docker.sock:ro  # Para sandbox
+      - spesion-data:/app/data        # Persistent: ChromaDB, SQLite, OAuth tokens
+      - spesion-logs:/app/logs        # Persistent: application logs
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # Code sandbox
     depends_on:
-      - ollama
+      ollama:
+        condition: service_healthy
     networks:
       - spesion-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
 
   # ==========================================================================
   # OLLAMA - LLM Local
@@ -49,14 +99,14 @@ services:
     image: ollama/ollama:latest
     container_name: spesion-ollama
     restart: unless-stopped
+    # Only expose on localhost — never to the internet
     ports:
-      - "11434:11434"
+      - "127.0.0.1:11434:11434"
     volumes:
       - ollama-data:/root/.ollama
     environment:
       - OLLAMA_HOST=0.0.0.0
-    # Para CPU (sin GPU)
-    # Si tienes GPU NVIDIA, añade:
+    # Uncomment for NVIDIA GPU support:
     # deploy:
     #   resources:
     #     reservations:
@@ -66,19 +116,25 @@ services:
     #           capabilities: [gpu]
     networks:
       - spesion-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 5
 
   # ==========================================================================
-  # SANDBOX - Ejecución Segura de Código
+  # SANDBOX - Ejecución Segura de Código (on-demand via Docker SDK)
   # ==========================================================================
   sandbox:
     build:
       context: ..
       dockerfile: docker/Dockerfile.sandbox
     container_name: spesion-sandbox
-    # No se inicia automáticamente, se usa bajo demanda
+    # Not started automatically — spawned on demand by code_sandbox tool
     profiles:
       - sandbox
-    network_mode: none  # Sin acceso a red
+    network_mode: none      # Completely isolated: no internet access
     mem_limit: 256m
     cpus: 0.5
     read_only: true
@@ -90,6 +146,8 @@ services:
 # ==========================================================================
 volumes:
   spesion-data:
+    driver: local
+  spesion-logs:
     driver: local
   ollama-data:
     driver: local

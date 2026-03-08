@@ -1,0 +1,159 @@
+# =============================================================================
+# SPESION 3.0 — Production Docker Compose
+# =============================================================================
+# Usage:
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.prod.yml up -d --build
+#
+# Architecture:
+#   spesion  — API + Telegram bot + Heartbeat (single process, non-root)
+#   ollama   — Local LLM inference (internal network only, no external port)
+#   caddy    — Reverse proxy with automatic HTTPS (Let's Encrypt)
+#   sandbox  — Isolated code execution (on-demand, no network, read-only)
+# =============================================================================
+
+services:
+
+  # ─── SPESION (brain) ────────────────────────────────────────────────────
+  spesion:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: spesion
+    restart: always
+    env_file: ../.env
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - CHROMA_PERSIST_DIR=/app/data/chroma
+      - SQLITE_DB_PATH=/app/data/spesion.db
+      - GOOGLE_CREDENTIALS_PATH=/app/data/google_calendar_credentials.json
+      - LOG_LEVEL=WARNING
+      - DEBUG=false
+      - SPESION_HOST=0.0.0.0
+      - SPESION_PORT=8100
+    volumes:
+      - spesion-data:/app/data
+      - spesion-logs:/app/logs
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    # Port NOT exposed externally — only Caddy can reach it
+    expose:
+      - "8100"
+    networks:
+      - internal
+    depends_on:
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+          cpus: "2.0"
+        reservations:
+          memory: 512M
+          cpus: "0.5"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  # ─── OLLAMA (local LLM) ────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: spesion-ollama
+    restart: always
+    volumes:
+      - ollama-data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    networks:
+      - internal
+    # NO external port — only reachable from SPESION via internal network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+          cpus: "4.0"
+        reservations:
+          memory: 2G
+          cpus: "1.0"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Uncomment for NVIDIA GPU:
+    # runtime: nvidia
+    # environment:
+    #   - NVIDIA_VISIBLE_DEVICES=all
+
+  # ─── CADDY (HTTPS reverse proxy) ───────────────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    container_name: spesion-caddy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3 (QUIC)
+    volumes:
+      - ../Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - internal
+    depends_on:
+      spesion:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.5"
+
+  # ─── SANDBOX (isolated code execution) ─────────────────────────────────
+  sandbox:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.sandbox
+    container_name: spesion-sandbox
+    profiles:
+      - sandbox
+    network_mode: none
+    mem_limit: 256m
+    cpus: 0.5
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  spesion-data:
+    driver: local
+  spesion-logs:
+    driver: local
+  ollama-data:
+    driver: local
+  caddy-data:
+    driver: local
+  caddy-config:
+    driver: local
+
+networks:
+  internal:
+    driver: bridge

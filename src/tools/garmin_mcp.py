@@ -1,4 +1,11 @@
-"""Garmin MCP - Integración con Garmin Connect."""
+"""Garmin MCP - Integración con Garmin Connect.
+
+SPESION 3.0 Optimizations:
+- Graceful re-login on session expiry (Garmin tokens expire)
+- New tool: get_garmin_weekly_summary
+- New tool: check_garmin_connection
+- Better error messages for MFA / 2FA issues
+"""
 
 from __future__ import annotations
 
@@ -15,35 +22,60 @@ logger = logging.getLogger(__name__)
 _garmin_client = None
 
 
-def _get_garmin_client():
-    """Obtiene el cliente de Garmin (lazy init)."""
+def _get_garmin_client(force_relogin: bool = False):
+    """Obtiene el cliente de Garmin (lazy init con re-login automático)."""
     global _garmin_client
-    
-    if _garmin_client is not None:
+
+    if _garmin_client is not None and not force_relogin:
         return _garmin_client
-    
+
     try:
         from garminconnect import Garmin
         from src.core.config import settings
-        
+
         if not settings.garmin.email or not settings.garmin.password:
-            logger.warning("Credenciales de Garmin no configuradas")
+            logger.warning("Garmin credentials not configured (GARMIN_EMAIL / GARMIN_PASSWORD)")
             return None
-        
+
         _garmin_client = Garmin(
             settings.garmin.email,
             settings.garmin.password.get_secret_value(),
         )
         _garmin_client.login()
-        logger.info("Conectado a Garmin Connect")
+        logger.info("Connected to Garmin Connect")
         return _garmin_client
-        
+
     except ImportError:
-        logger.error("garminconnect no instalado. pip install garminconnect")
+        logger.error("garminconnect not installed. Run: pip install garminconnect")
         return None
     except Exception as e:
-        logger.error(f"Error conectando a Garmin: {e}")
+        msg = str(e).lower()
+        if "mfa" in msg or "2fa" in msg or "multi" in msg or "factor" in msg:
+            logger.error(
+                "Garmin requires MFA. Use garminconnect >= 0.2 and authenticate "
+                "interactively once with: python -m garminconnect (follow prompts)."
+            )
+        elif "invalid" in msg or "credentials" in msg or "login" in msg:
+            logger.error(f"Garmin login failed — check GARMIN_EMAIL and GARMIN_PASSWORD: {e}")
+        else:
+            logger.error(f"Garmin connection error: {e}")
         return None
+
+
+def _garmin_call(fn, *args, **kwargs):
+    """Execute a Garmin API call; retry once with re-login on session errors."""
+    global _garmin_client
+    try:
+        return fn(*args, **kwargs)
+    except Exception as e:
+        msg = str(e).lower()
+        if any(k in msg for k in ("expired", "unauthorized", "401", "session")):
+            logger.info("Garmin session expired, attempting re-login...")
+            _garmin_client = None
+            client = _get_garmin_client(force_relogin=True)
+            if client:
+                return fn(*args, **kwargs)
+        raise
 
 
 def _normalize_date(date_str: str | None) -> str:
@@ -298,8 +330,8 @@ def _get_mock_garmin_stats() -> dict[str, Any]:
 
 
 def create_garmin_tools() -> list:
-    """Crea las herramientas de Garmin.
-    
+    """Crea las herramientas de Garmin (SPESION 3.0).
+
     Returns:
         Lista de herramientas
     """
@@ -307,5 +339,104 @@ def create_garmin_tools() -> list:
         get_garmin_stats,
         get_garmin_activities,
         get_training_status,
+        get_garmin_weekly_summary,
+        check_garmin_connection,
     ]
 
+
+@tool
+def get_garmin_weekly_summary() -> dict[str, Any]:
+    """Obtiene un resumen semanal de actividad y salud de Garmin.
+
+    Returns:
+        Dict con métricas agregadas de la semana: pasos, sueño, HRV, actividades, carga
+    """
+    client = _get_garmin_client()
+    if client is None:
+        return {"error": "Garmin no disponible"}
+
+    today = datetime.now()
+    summary: dict[str, Any] = {
+        "week_start": (today - timedelta(days=7)).strftime("%Y-%m-%d"),
+        "week_end": today.strftime("%Y-%m-%d"),
+        "days": [],
+        "totals": {},
+    }
+
+    total_steps = 0
+    total_sleep = 0.0
+    total_calories = 0
+    hrv_values = []
+    days_collected = 0
+
+    for offset in range(7, 0, -1):
+        date_str = (today - timedelta(days=offset)).strftime("%Y-%m-%d")
+        day_data: dict[str, Any] = {"date": date_str}
+
+        try:
+            stats = _garmin_call(client.get_stats, date_str)
+            if stats:
+                day_data["steps"] = stats.get("totalSteps", 0)
+                day_data["calories"] = stats.get("totalKilocalories", 0)
+                total_steps += day_data["steps"]
+                total_calories += day_data["calories"]
+        except Exception:
+            pass
+
+        try:
+            sleep = _garmin_call(client.get_sleep_data, date_str)
+            if sleep:
+                hours = sleep.get("dailySleepDTO", {}).get("sleepTimeSeconds", 0) / 3600
+                day_data["sleep_hours"] = round(hours, 1)
+                total_sleep += hours
+        except Exception:
+            pass
+
+        try:
+            hrv = _garmin_call(client.get_hrv_data, date_str)
+            if hrv and "hrvSummary" in hrv:
+                val = hrv["hrvSummary"].get("lastNightAvg", 0)
+                if val:
+                    day_data["hrv"] = val
+                    hrv_values.append(val)
+        except Exception:
+            pass
+
+        summary["days"].append(day_data)
+        days_collected += 1
+
+    summary["totals"] = {
+        "total_steps": total_steps,
+        "avg_daily_steps": round(total_steps / max(1, days_collected)),
+        "total_sleep_hours": round(total_sleep, 1),
+        "avg_sleep_hours": round(total_sleep / max(1, days_collected), 1),
+        "avg_hrv": round(sum(hrv_values) / len(hrv_values), 1) if hrv_values else None,
+        "total_calories": total_calories,
+    }
+    return summary
+
+
+@tool
+def check_garmin_connection() -> dict[str, Any]:
+    """Verifica la conectividad con Garmin Connect.
+
+    Returns:
+        Dict con estado de la conexión y datos básicos del perfil
+    """
+    client = _get_garmin_client()
+    if client is None:
+        return {
+            "connected": False,
+            "error": "Cannot connect to Garmin. Check GARMIN_EMAIL and GARMIN_PASSWORD in .env",
+        }
+
+    try:
+        profile = _garmin_call(client.get_user_profile)
+        return {
+            "connected": True,
+            "display_name": profile.get("displayName", ""),
+            "full_name": profile.get("fullName", ""),
+            "user_id": profile.get("userId", ""),
+        }
+    except Exception as e:
+        return {"connected": False, "error": str(e)}

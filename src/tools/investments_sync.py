@@ -545,5 +545,58 @@ def sync_investments_to_notion(days: int = 7, include_ibkr: bool = True, include
 
 
 def create_investment_sync_tools() -> list:
-    return [sync_investments_to_notion]
+    return [sync_investments_to_notion, check_ibkr_connection]
+
+
+@tool
+def check_ibkr_connection() -> dict[str, Any]:
+    """Verifica la conexión con IBKR Flex Web Service y muestra la configuración.
+
+    Returns:
+        Dict con estado: token configurado, query id, test request result
+    """
+    from src.core.config import settings
+
+    has_token = bool(settings.ibkr.flex_token and settings.ibkr.flex_token.get_secret_value())
+    has_query = bool(settings.ibkr.flex_query_id)
+
+    if not has_token or not has_query:
+        missing = []
+        if not has_token:
+            missing.append("IBKR_FLEX_TOKEN")
+        if not has_query:
+            missing.append("IBKR_FLEX_QUERY_ID")
+        return {
+            "connected": False,
+            "error": f"Missing .env variables: {', '.join(missing)}",
+            "setup_url": "https://www.interactivebrokers.com/en/software/am/am/reports/activityflexquery.htm",
+        }
+
+    # Try a minimal Flex SendRequest to validate credentials
+    try:
+        import httpx
+        import xml.etree.ElementTree as ET
+
+        token = settings.ibkr.flex_token.get_secret_value()
+        qid = settings.ibkr.flex_query_id
+
+        with httpx.Client(follow_redirects=True, timeout=httpx.Timeout(15.0)) as client:
+            r = client.get(
+                "https://www.interactivebrokers.com/Universal/servlet/FlexStatementService.SendRequest",
+                params={"t": token, "q": qid, "v": "3"},
+            )
+            r.raise_for_status()
+            root = ET.fromstring(r.text)
+            ref_code = root.attrib.get("referenceCode") or root.findtext("ReferenceCode")
+            if ref_code:
+                return {
+                    "connected": True,
+                    "reference_code": ref_code,
+                    "message": "IBKR Flex connection OK — statement can be retrieved",
+                }
+            error_msg = root.findtext("ErrorMessage") or root.attrib.get("errorMessage", r.text[:200])
+            return {"connected": False, "error": f"IBKR Flex error: {error_msg}"}
+
+    except Exception as e:
+        return {"connected": False, "error": str(e)}
 

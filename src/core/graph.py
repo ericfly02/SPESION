@@ -1,4 +1,8 @@
-"""LangGraph Graph - Grafo de agentes de SPESION."""
+"""LangGraph Graph - Grafo de agentes de SPESION.
+
+SPESION 3.0: Uses ModelRouter for intelligent per-agent model selection,
+workspace context injection, and cognitive loop integration.
+"""
 
 from __future__ import annotations
 
@@ -272,18 +276,30 @@ def create_spesion_graph() -> CompiledStateGraph:
 
 def _create_agents() -> dict:
     """Crea todos los agentes del sistema.
+
+    SPESION 3.0: Uses ModelRouter for intelligent per-agent model selection.
+    Each agent gets the best available model based on its complexity/privacy needs.
     
     Returns:
         Dict con agentes por nombre
     """
-    from src.services.llm_factory import get_factory, TaskType
+    from src.core.model_router import get_model_router
     
-    factory = get_factory()
+    router = get_model_router()
     
-    # Obtener LLMs
-    local_llm = factory.get_llm(task_type=TaskType.PRIVATE, temperature=0.7)
-    cloud_llm = factory.get_llm(task_type=TaskType.ANALYSIS, temperature=0.7)
-    
+    # Each agent gets its own LLM based on ModelRouter's intelligence:
+    # - supervisor/sentinel/companion/coach → local Ollama (privacy + speed)
+    # - scholar/tycoon/techlead → cloud if available, fallback to local
+    # - connector/executive → moderate (cloud-light or heavy local)
+
+    def get_agent_llm(agent_name: str, temp: float = 0.7):
+        try:
+            return router.get_llm(agent_name=agent_name, temperature=temp)
+        except RuntimeError:
+            # Ultimate fallback
+            from langchain_ollama import ChatOllama
+            return ChatOllama(model="llama3.2:3b", temperature=temp)
+
     # Importar agentes
     from src.agents import (
         ScholarAgent,
@@ -308,139 +324,263 @@ def _create_agents() -> dict:
     from src.tools.notion_mcp import create_notion_setup_tools
     
     agents = {
-        "scholar": create_scholar_agent(cloud_llm),
-        "coach": create_coach_agent(local_llm),
-        "tycoon": create_tycoon_agent(cloud_llm),
-        "companion": create_companion_agent(local_llm),
-        "techlead": create_techlead_agent(cloud_llm),
-        "connector": create_connector_agent(cloud_llm),
-        "executive": create_executive_agent(local_llm),
-        "sentinel": create_sentinel_agent(local_llm, tools=create_notion_setup_tools()),
+        "scholar": create_scholar_agent(get_agent_llm("scholar")),
+        "coach": create_coach_agent(get_agent_llm("coach")),
+        "tycoon": create_tycoon_agent(get_agent_llm("tycoon")),
+        "companion": create_companion_agent(get_agent_llm("companion")),
+        "techlead": create_techlead_agent(get_agent_llm("techlead")),
+        "connector": create_connector_agent(get_agent_llm("connector")),
+        "executive": create_executive_agent(get_agent_llm("executive")),
+        "sentinel": create_sentinel_agent(get_agent_llm("sentinel"), tools=create_notion_setup_tools()),
     }
     
-    logger.info(f"Creados {len(agents)} agentes")
+    # Log which models were selected
+    logger.info(f"Creados {len(agents)} agentes via ModelRouter")
+    try:
+        health = router.get_health_status()
+        logger.info(f"Provider status: {health['providers']}")
+    except Exception:
+        pass
+
     return agents
 
 
 class SpesionAssistant:
-    """Clase de alto nivel para interactuar con SPESION."""
-    
-    def __init__(self) -> None:
-        """Inicializa el asistente."""
+    """Clase de alto nivel para interactuar con SPESION.
+
+    SPESION 3.0: Integrates workspace context, heartbeat runner, cognitive loop,
+    and intelligent model routing. Uses SQLite session persistence.
+    Supports ``agent_hint`` for forced routing (Discord channel → agent).
+    """
+
+    def __init__(self, enable_heartbeat: bool = False) -> None:
         self.graph = create_spesion_graph()
         self._session_counter = 0
-        # Historial por usuario para dar contexto conversacional real (además del RAG)
-        self._history: dict[str, list] = {}
         self._max_history_messages = 20
-    
+
+        # Tracks the last response metadata (used by the API layer)
+        self.last_agent: str | None = None
+        self.last_session_id: str | None = None
+
+        # Session store (lazy init)
+        self._store = None
+
+        # --- SPESION 3.0: New subsystems ---
+        self._workspace_loader = None
+        self._heartbeat = None
+        self._cognitive = None
+        self._heartbeat_enabled = enable_heartbeat
+
+        # Pre-load workspace context at startup
+        try:
+            _ = self.workspace_loader
+            logger.info("Workspace context loaded successfully")
+        except Exception as e:
+            logger.warning(f"Workspace context not available: {e}")
+
+        # Start heartbeat if enabled
+        if enable_heartbeat:
+            try:
+                self._start_heartbeat()
+            except Exception as e:
+                logger.warning(f"Heartbeat not started: {e}")
+
+    @property
+    def store(self):
+        if self._store is None:
+            from src.persistence.session_store import get_session_store
+            self._store = get_session_store()
+        return self._store
+
+    @property
+    def workspace_loader(self):
+        if self._workspace_loader is None:
+            from src.core.workspace_loader import WorkspaceLoader
+            self._workspace_loader = WorkspaceLoader()
+        return self._workspace_loader
+
+    @property
+    def cognitive(self):
+        if self._cognitive is None:
+            from src.cognitive.reflection import CognitiveLoop
+            self._cognitive = CognitiveLoop()
+        return self._cognitive
+
+    def _start_heartbeat(self):
+        """Start the heartbeat runner for proactive tasks."""
+        import asyncio
+        from src.heartbeat.runner import HeartbeatRunner
+
+        self._heartbeat = HeartbeatRunner()
+        # Register a notification callback
+        self._heartbeat.on_notification = self._handle_heartbeat_notification
+        # Start in background (non-blocking)
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.ensure_future(self._heartbeat.start())
+            else:
+                logger.info("Heartbeat will start when event loop runs")
+        except RuntimeError:
+            logger.info("Heartbeat deferred — no event loop yet")
+
+    def _handle_heartbeat_notification(self, notification: dict):
+        """Handle notifications from the heartbeat system."""
+        logger.info(f"Heartbeat notification: {notification.get('type', 'unknown')}")
+        # Store for next user interaction
+        if not hasattr(self, '_pending_notifications'):
+            self._pending_notifications = []
+        self._pending_notifications.append(notification)
+
+    def get_pending_notifications(self) -> list[dict]:
+        """Get and clear pending heartbeat notifications."""
+        if not hasattr(self, '_pending_notifications'):
+            return []
+        notifications = self._pending_notifications.copy()
+        self._pending_notifications.clear()
+        return notifications
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+    def _extract_response(self, result: dict) -> str:
+        """Pull the final text response out of the graph result."""
+        if result.get("messages"):
+            for msg in reversed(result["messages"]):
+                if hasattr(msg, "content") and msg.content and isinstance(msg.content, str):
+                    return msg.content
+            last = result["messages"][-1]
+            return str(last.content) if hasattr(last, "content") else "..."
+        return "No pude procesar tu mensaje. (Respuesta vacía)"
+
+    def _load_history(self, user_id: str, platform: str = "api"):
+        """Load recent messages from the session store as LangChain messages."""
+        from langchain_core.messages import AIMessage, HumanMessage
+
+        session_id = self.store.get_or_create_session(user_id, platform)
+        rows = self.store.get_messages(session_id, limit=self._max_history_messages)
+
+        msgs = []
+        for r in rows:
+            if r["role"] == "user":
+                msgs.append(HumanMessage(content=r["content"]))
+            elif r["role"] == "assistant":
+                msgs.append(AIMessage(content=r["content"]))
+        return session_id, msgs
+
+    def _persist(self, session_id: str, user_msg: str, ai_msg: str, agent: str | None = None):
+        """Save user + assistant messages to the session store."""
+        self.store.save_message(session_id, "user", user_msg)
+        self.store.save_message(session_id, "assistant", ai_msg, agent=agent)
+        # Auto-prune very long sessions
+        self.store.prune_old_messages(session_id, keep=60)
+
+    # ------------------------------------------------------------------
+    # Sync chat (kept for backward-compat with CLI / Telegram blocking)
+    # ------------------------------------------------------------------
     def chat(
         self,
         message: str,
         user_id: str = "default",
         telegram_chat_id: int | None = None,
         is_voice: bool = False,
+        agent_hint: str | None = None,
     ) -> str:
-        """Procesa un mensaje y retorna la respuesta.
-        
-        Args:
-            message: Mensaje del usuario
-            user_id: ID del usuario
-            telegram_chat_id: ID del chat de Telegram
-            is_voice: Si el mensaje viene de voz
-            
-        Returns:
-            Respuesta del asistente
-        """
-        from langchain_core.messages import AIMessage, HumanMessage
-        
-        # Crear estado inicial
-        self._session_counter += 1
-        session_id = f"{user_id}_{self._session_counter}"
-        
+        from langchain_core.messages import HumanMessage
+
+        platform = "telegram" if telegram_chat_id else "api"
+        session_id, history = self._load_history(user_id, platform)
+        self.last_session_id = session_id
+
         state = create_initial_state(
             user_id=user_id,
             session_id=session_id,
             telegram_chat_id=telegram_chat_id,
         )
-        
-        # Añadir historial + mensaje del usuario (contexto conversacional real)
-        history = self._history.get(user_id, [])
-        state["messages"] = [*history, HumanMessage(content=message)]
+
+        # SPESION 3.0: Inject workspace context into state
+        try:
+            ws_ctx = self.workspace_loader.load()
+            state["workspace_context"] = ws_ctx.get("combined", "")
+        except Exception:
+            pass
+
+        # Prepend any pending heartbeat notifications
+        notification_prefix = ""
+        notifications = self.get_pending_notifications()
+        if notifications:
+            items = [n.get("message", "") for n in notifications if n.get("message")]
+            if items:
+                notification_prefix = "[SYSTEM NOTIFICATIONS]\n" + "\n".join(f"• {m}" for m in items) + "\n\n"
+
+        user_content = notification_prefix + message if notification_prefix else message
+        state["messages"] = [*history, HumanMessage(content=user_content)]
         state["original_query"] = message
         state["is_voice_message"] = is_voice
-        
-        # Ejecutar grafo
+        if agent_hint:
+            state["next_agent"] = agent_hint
+
         try:
             result = self.graph.invoke(state)
-            
-            # Extraer respuesta
-            if result.get("messages"):
-                # Buscar el último mensaje con contenido real
-                for msg in reversed(result["messages"]):
-                    if hasattr(msg, "content") and msg.content and isinstance(msg.content, str):
-                        # Persistir en historial
-                        history = state["messages"][-self._max_history_messages :]
-                        history.append(AIMessage(content=msg.content))
-                        self._history[user_id] = history[-self._max_history_messages :]
-                        return msg.content
-                
-                last = result["messages"][-1]
-                final = str(last.content) if hasattr(last, "content") else "..."
-                history = state["messages"][-self._max_history_messages :]
-                history.append(AIMessage(content=final))
-                self._history[user_id] = history[-self._max_history_messages :]
-                return final
-            
-            return "No pude procesar tu mensaje. (Respuesta vacía)"
-            
+            response = self._extract_response(result)
+            self.last_agent = result.get("sender", "supervisor")
+            self._persist(session_id, message, response, agent=self.last_agent)
+            return response
         except Exception as e:
             logger.error(f"Error en grafo: {e}", exc_info=True)
             return f"Error procesando el mensaje: {str(e)}"
-    
+
+    # ------------------------------------------------------------------
+    # Async chat (used by API + bots)
+    # ------------------------------------------------------------------
     async def achat(
         self,
         message: str,
         user_id: str = "default",
         telegram_chat_id: int | None = None,
         is_voice: bool = False,
+        agent_hint: str | None = None,
     ) -> str:
-        """Versión asíncrona de chat."""
-        from langchain_core.messages import AIMessage, HumanMessage
-        
-        self._session_counter += 1
-        session_id = f"{user_id}_{self._session_counter}"
-        
+        from langchain_core.messages import HumanMessage
+
+        platform = "telegram" if telegram_chat_id else "api"
+        session_id, history = self._load_history(user_id, platform)
+        self.last_session_id = session_id
+
         state = create_initial_state(
             user_id=user_id,
             session_id=session_id,
             telegram_chat_id=telegram_chat_id,
         )
-        
-        history = self._history.get(user_id, [])
-        state["messages"] = [*history, HumanMessage(content=message)]
+
+        # SPESION 3.0: Inject workspace context into state
+        try:
+            ws_ctx = self.workspace_loader.load()
+            state["workspace_context"] = ws_ctx.get("combined", "")
+        except Exception:
+            pass
+
+        # Prepend any pending heartbeat notifications
+        notification_prefix = ""
+        notifications = self.get_pending_notifications()
+        if notifications:
+            items = [n.get("message", "") for n in notifications if n.get("message")]
+            if items:
+                notification_prefix = "[SYSTEM NOTIFICATIONS]\n" + "\n".join(f"• {m}" for m in items) + "\n\n"
+
+        user_content = notification_prefix + message if notification_prefix else message
+        state["messages"] = [*history, HumanMessage(content=user_content)]
         state["original_query"] = message
         state["is_voice_message"] = is_voice
-        
+        if agent_hint:
+            state["next_agent"] = agent_hint
+
         try:
             result = await self.graph.ainvoke(state)
-            
-            if result.get("messages"):
-                for msg in reversed(result["messages"]):
-                    if hasattr(msg, "content") and msg.content and isinstance(msg.content, str):
-                        history = state["messages"][-self._max_history_messages :]
-                        history.append(AIMessage(content=msg.content))
-                        self._history[user_id] = history[-self._max_history_messages :]
-                        return msg.content
-                
-                last = result["messages"][-1]
-                final = str(last.content) if hasattr(last, "content") else "..."
-                history = state["messages"][-self._max_history_messages :]
-                history.append(AIMessage(content=final))
-                self._history[user_id] = history[-self._max_history_messages :]
-                return final
-            
-            return "No pude procesar tu mensaje. (Respuesta vacía)"
-            
+            response = self._extract_response(result)
+            self.last_agent = result.get("sender", "supervisor")
+            self._persist(session_id, message, response, agent=self.last_agent)
+            return response
         except Exception as e:
             logger.error(f"Error en grafo async: {e}", exc_info=True)
             return f"Error procesando el mensaje: {str(e)}"

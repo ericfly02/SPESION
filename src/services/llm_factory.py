@@ -1,4 +1,10 @@
-"""LLM Factory - Selector híbrido entre Ollama (local) y Cloud (OpenAI/Anthropic)."""
+"""LLM Factory - Selector híbrido entre Ollama (local) y Cloud (OpenAI/Anthropic).
+
+SPESION 3.0: This module is kept for backward compatibility.
+New code should use src.core.model_router.ModelRouter instead.
+The get_llm() and get_factory() functions now delegate to ModelRouter
+when available, falling back to the original LLMFactory logic.
+"""
 
 from __future__ import annotations
 
@@ -316,6 +322,9 @@ def get_llm(
 ) -> BaseChatModel:
     """Función de conveniencia para obtener un LLM.
     
+    SPESION 3.0: Delegates to ModelRouter when available.
+    Falls back to LLMFactory for backward compatibility.
+    
     Args:
         task_type: Tipo de tarea
         privacy_required: Si se requiere privacidad
@@ -324,6 +333,20 @@ def get_llm(
     Returns:
         Instancia del LLM apropiado
     """
+    # Try ModelRouter first (SPESION 3.0)
+    try:
+        from src.core.model_router import get_model_router, Privacy
+        router = get_model_router()
+        privacy = Privacy.PRIVATE if privacy_required else Privacy.PUBLIC
+        return router.get_llm(
+            agent_name="general",
+            privacy=privacy,
+            temperature=temperature,
+        )
+    except Exception:
+        pass
+    
+    # Fallback to old LLMFactory
     return get_factory().get_llm(
         task_type=task_type,
         privacy_required=privacy_required,

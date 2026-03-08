@@ -1,3 +1,35 @@
+# Environment & secrets
 .env
-.venv
+.env.*.local
+
+# Python
+.venv/
+venv/
 __pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Data (contains personal info + credentials)
+data/user_profile.md
+data/sessions.db
+data/sessions.db-wal
+data/sessions.db-shm
+data/chroma/
+data/temp/
+data/uploads/
+data/backups/
+data/google_calendar_token.json
+data/scholar_sent_arxiv_ids.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

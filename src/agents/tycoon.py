@@ -162,8 +162,16 @@ def create_tycoon_agent(
     from src.tools.finance_tools import create_finance_tools
     from src.tools.notion_mcp import create_notion_finance_tools
     from src.tools.investments_sync import create_investment_sync_tools
+    from src.tools.autonomous_tools import create_autonomous_tools
+    from src.tools.browser_tool import create_browser_tools
     
-    default_tools = create_finance_tools() + create_notion_finance_tools() + create_investment_sync_tools()
+    default_tools = (
+        create_finance_tools()
+        + create_notion_finance_tools()
+        + create_investment_sync_tools()
+        + create_autonomous_tools()
+        + create_browser_tools()
+    )
     all_tools = default_tools + (tools or [])
     
     return TycoonAgent(llm=llm, tools=all_tools)

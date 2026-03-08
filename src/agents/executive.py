@@ -270,6 +270,10 @@ def create_executive_agent(
         log_training_session,
         get_training_for_date,
     )
+    from src.tools.autonomous_tools import create_autonomous_tools
+    from src.tools.email_tool import create_email_tools
+    from src.tools.phone_tool import create_phone_tools
+    from src.tools.browser_tool import create_browser_tools
     
     default_tools = [
         *create_calendar_tools(),
@@ -280,6 +284,11 @@ def create_executive_agent(
         add_book,
         log_training_session,
         get_training_for_date,
+        # SPESION 3.0: Autonomous execution engine
+        *create_autonomous_tools(),
+        *create_email_tools(),
+        *create_phone_tools(),
+        *create_browser_tools(),
     ]
     
     all_tools = default_tools + (tools or [])

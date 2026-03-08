@@ -1,0 +1,46 @@
+# =============================================================================
+# SPESION 2.0 — API + Bots Dockerfile
+# =============================================================================
+# Runs: FastAPI server (port 8100) + Discord bot + Telegram bot
+# in a single process via async lifespan.
+# =============================================================================
+
+FROM python:3.11-slim AS base
+
+# System deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc g++ \
+    tesseract-ocr tesseract-ocr-spa \
+    libffi-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Python deps
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copy source
+COPY . .
+
+# Create data directory
+RUN mkdir -p /data/chroma /data/temp /data/backups /data/uploads
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=30s \
+    CMD python -c "import httpx; r=httpx.get('http://localhost:8100/api/v1/health'); r.raise_for_status()" || exit 1
+
+# Environment defaults
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    LOG_LEVEL=INFO
+
+EXPOSE 8100
+
+# Entry point: uvicorn running the unified server
+CMD ["python", "-m", "uvicorn", "src.api.server:app", \
+     "--host", "0.0.0.0", "--port", "8100", \
+     "--workers", "1", "--loop", "uvloop", \
+     "--timeout-keep-alive", "30"]

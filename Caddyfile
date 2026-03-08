@@ -1,0 +1,56 @@
+# SPESION 3.0 — Caddyfile
+# Caddy automatically obtains and renews HTTPS certificates from Let's Encrypt.
+#
+# Replace "your-domain.duckdns.org" with your actual domain or DuckDNS hostname.
+# To use DuckDNS: https://www.duckdns.org (free, takes 2 minutes to set up)
+
+your-domain.duckdns.org {
+
+    # ── Rate limiting ────────────────────────────────────────────────────
+    # 20 requests/second per IP to the API
+    # (requires caddy-ratelimit plugin — see note below if using plain Caddy)
+
+    # ── Twilio webhook — allow only Twilio IPs ──────────────────────────
+    @twilio {
+        path /twilio/*
+        remote_ip 54.172.60.0/23 34.203.250.0/23 52.215.127.0/24 \
+                  54.244.51.0/24 54.171.127.192/26 103.4.99.0/26 \
+                  162.221.156.0/24 35.156.191.128/25
+    }
+
+    # ── All other traffic — proxy to SPESION API ─────────────────────────
+    reverse_proxy spesion:8100 {
+        # Health check for Caddy's own upstream tracking
+        health_uri /health
+        health_interval 30s
+        health_timeout 10s
+
+        # Pass real client IP to SPESION
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # ── Security headers ─────────────────────────────────────────────────
+    header {
+        # Prevent clickjacking
+        X-Frame-Options "DENY"
+        # Prevent MIME sniffing
+        X-Content-Type-Options "nosniff"
+        # HSTS (1 year)
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        # Remove server identity
+        -Server
+    }
+
+    # ── Logging ──────────────────────────────────────────────────────────
+    log {
+        output file /data/caddy-access.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+        format json
+    }
+}
+
+# Redirect HTTP → HTTPS automatically (Caddy does this by default)

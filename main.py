@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SPESION - Punto de entrada principal.
+"""SPESION 3.0 - Punto de entrada principal.
 
 Este es el script principal para ejecutar SPESION.
 Soporta múltiples modos de ejecución:
@@ -10,8 +10,17 @@ Soporta múltiples modos de ejecución:
 2. CLI interactivo:
    python main.py --cli
 
-3. Servidor API (futuro):
+3. Servidor API:
    python main.py --api
+
+4. Heartbeat (proactive background runner):
+   python main.py --heartbeat
+
+5. Cognitive reflection cycle:
+   python main.py --reflect
+
+6. Model health status:
+   python main.py --status
 """
 
 from __future__ import annotations
@@ -51,6 +60,8 @@ def ensure_directories() -> None:
         Path("./data"),
         Path("./data/chroma"),
         Path("./data/temp"),
+        Path("./workspace"),
+        Path("./workspace/memory"),
     ]
     for d in dirs:
         d.mkdir(parents=True, exist_ok=True)
@@ -188,12 +199,16 @@ def pull_ollama_models() -> None:
 def main() -> None:
     """Función principal."""
     parser = argparse.ArgumentParser(
-        description="SPESION - Asistente Personal Multi-Agente",
+        description="SPESION 3.0 - Asistente Personal Multi-Agente con capacidades AGI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Ejemplos:
   python main.py              # Ejecutar bot de Telegram
   python main.py --cli        # Ejecutar CLI interactivo
+  python main.py --api        # Ejecutar servidor FastAPI
+  python main.py --heartbeat  # Ejecutar heartbeat proactivo
+  python main.py --reflect    # Ejecutar ciclo de reflexión cognitiva
+  python main.py --status     # Ver estado de modelos y sistemas
   python main.py --setup      # Configurar entorno inicial
         """,
     )
@@ -217,6 +232,26 @@ Ejemplos:
         "--setup-notion",
         action="store_true",
         help="Re-inicializar estructura de Notion (CUIDADO: Sobreescribe IDs en .env)",
+    )
+    parser.add_argument(
+        "--api",
+        action="store_true",
+        help="Ejecutar servidor FastAPI (puerto 8100)",
+    )
+    parser.add_argument(
+        "--heartbeat",
+        action="store_true",
+        help="Ejecutar heartbeat proactivo (tareas programadas autónomas)",
+    )
+    parser.add_argument(
+        "--reflect",
+        action="store_true",
+        help="Ejecutar un ciclo completo de reflexión cognitiva",
+    )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Mostrar estado de modelos, memoria y sistemas",
     )
     parser.add_argument(
         "--log-level",
@@ -281,6 +316,107 @@ Ejemplos:
             sys.exit(1)
         return
     
+    # ------------------------------------------------------------------
+    # SPESION 3.0: New execution modes
+    # ------------------------------------------------------------------
+
+    # Status: Show model health, memory stats, system state
+    if args.status:
+        print("\n" + "=" * 60)
+        print("  SPESION 3.0 — System Status")
+        print("=" * 60)
+
+        # Model Router status
+        try:
+            from src.core.model_router import get_model_router
+            router = get_model_router()
+            health = router.get_health_status()
+            print("\n🤖 Model Router:")
+            for provider, status in health.get("providers", {}).items():
+                icon = "✅" if status.get("healthy") else "❌"
+                print(f"  {icon} {provider}: {status}")
+        except Exception as e:
+            print(f"\n🤖 Model Router: ⚠️  Not initialized ({e})")
+
+        # Memory Bank stats
+        try:
+            from src.memory.evolving_memory import MemoryBank
+            bank = MemoryBank()
+            stats = bank.stats()
+            print(f"\n🧠 Memory Bank:")
+            print(f"  Total memories: {stats.get('total', 0)}")
+            print(f"  By type: {stats.get('by_type', {})}")
+            print(f"  Avg confidence: {stats.get('avg_confidence', 0):.2f}")
+            print(f"  Links: {stats.get('total_links', 0)}")
+        except Exception as e:
+            print(f"\n🧠 Memory Bank: ⚠️  Not initialized ({e})")
+
+        # Workspace files
+        try:
+            from src.core.workspace_loader import WorkspaceLoader
+            loader = WorkspaceLoader()
+            ctx = loader.load()
+            available = [k for k, v in ctx.items() if v and k != "combined"]
+            print(f"\n📁 Workspace Files: {', '.join(available)}")
+        except Exception as e:
+            print(f"\n📁 Workspace: ⚠️  Not loaded ({e})")
+
+        print()
+        return
+
+    # Heartbeat: Run proactive background tasks
+    if args.heartbeat:
+        logger.info("Starting SPESION 3.0 Heartbeat Runner...")
+        print("\n💓 Starting Heartbeat Runner (Ctrl+C to stop)...")
+        try:
+            from src.heartbeat.runner import HeartbeatRunner
+            runner = HeartbeatRunner()
+            asyncio.run(runner.start())
+        except KeyboardInterrupt:
+            print("\n💓 Heartbeat stopped.")
+        except Exception as e:
+            logger.error(f"Heartbeat error: {e}", exc_info=True)
+        return
+
+    # Reflect: Run one full cognitive cycle
+    if args.reflect:
+        logger.info("Running SPESION 3.0 Cognitive Reflection Cycle...")
+        print("\n🧠 Running full cognitive reflection cycle...")
+        try:
+            from src.cognitive.reflection import CognitiveLoop
+            loop = CognitiveLoop()
+            result = asyncio.run(loop.run_full_cycle())
+            print(f"\n✅ Reflection complete:")
+            print(f"  Patterns detected: {result.get('patterns', 0)}")
+            print(f"  Ideas generated: {result.get('ideas', 0)}")
+            print(f"  Memories curated: {result.get('curated', False)}")
+        except Exception as e:
+            logger.error(f"Reflection error: {e}", exc_info=True)
+            print(f"❌ Error: {e}")
+        return
+
+    # API server mode
+    if args.api:
+        logger.info("Starting SPESION 3.0 API Server...")
+        try:
+            import uvicorn
+            from src.core.config import settings
+            uvicorn.run(
+                "src.interfaces.server:app",
+                host=settings.api.host,
+                port=settings.api.port,
+                reload=False,
+            )
+        except ImportError:
+            logger.error("uvicorn not installed. Run: pip install uvicorn")
+        except Exception as e:
+            logger.error(f"API server error: {e}", exc_info=True)
+        return
+
+    # ------------------------------------------------------------------
+    # Default modes (Telegram / CLI)
+    # ------------------------------------------------------------------
+
     # Verificar token de Telegram si no es CLI
     if not args.cli and not args.cli_async:
         try:
@@ -295,7 +431,7 @@ Ejemplos:
     
     # Ejecutar modo seleccionado
     logger.info("=" * 60)
-    logger.info("  SPESION - Sistema Multi-Agente Personal")
+    logger.info("  SPESION 3.0 - Sistema Multi-Agente Personal")
     logger.info("=" * 60)
     
     if args.cli:

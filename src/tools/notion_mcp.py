@@ -1089,6 +1089,7 @@ def create_notion_setup_tools() -> list:
 def create_notion_tools() -> list:
     """Todas las herramientas de Notion."""
     return [
+        check_notion_connection,
         get_tasks,
         create_task,
         update_task_status,
@@ -1106,6 +1107,54 @@ def create_notion_tools() -> list:
         add_portfolio_holding,
         get_portfolio_holdings,
     ]
+
+
+# =============================================================================
+# CONNECTION CHECK
+# =============================================================================
+
+@tool
+def check_notion_connection() -> dict[str, Any]:
+    """Verifica la conexión con Notion y muestra qué bases de datos están configuradas.
+
+    Returns:
+        Dict con estado de conexión y bases de datos disponibles.
+    """
+    client = _get_notion_client()
+    if client is None:
+        return {
+            "connected": False,
+            "error": "Notion API key not set. Add NOTION_API_KEY to .env",
+            "setup_url": "https://www.notion.so/my-integrations",
+        }
+
+    try:
+        from src.core.config import settings
+
+        # Ping: list first page of search results
+        client.search(query="", page_size=1)
+
+        # Check which database IDs are configured
+        db_status: dict[str, str] = {}
+        for field in ("tasks_database_id", "journal_database_id", "crm_database_id",
+                      "books_database_id", "trainings_database_id",
+                      "finance_database_id", "transactions_database_id"):
+            val = getattr(settings.notion, field, None)
+            db_status[field] = val if val else "NOT SET"
+
+        configured = sum(1 for v in db_status.values() if v != "NOT SET")
+        return {
+            "connected": True,
+            "databases_configured": configured,
+            "databases_total": len(db_status),
+            "databases": db_status,
+        }
+
+    except Exception as e:
+        return {
+            "connected": False,
+            "error": str(e),
+        }
 
 
 # =============================================================================

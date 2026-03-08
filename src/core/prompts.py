@@ -2,52 +2,60 @@
 
 from __future__ import annotations
 
+import logging
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
 # =============================================================================
-# PERFIL DEL USUARIO - ERIC GONZALEZ DURO
+# PERFIL DEL USUARIO — LOADED FROM FILE (not hardcoded in source)
+# =============================================================================
+# SECURITY FIX: Personal data is loaded from data/user_profile.md at runtime.
+# This file is .gitignored so it never leaks into version control.
+# A minimal fallback is used if the file is missing.
 # =============================================================================
 
-USER_PROFILE = """
-## Perfil del Usuario: Eric Gonzalez Duro
+_DEFAULT_USER_PROFILE = """
+## Perfil del Usuario
 
 ### Datos Básicos
-- **Edad**: 23 años
-- **Profesión**: Ingeniero de Software en NTTData
-- **Ubicación**: Barcelona (origen: Andorra)
+- Configura tu perfil en `data/user_profile.md`
+- Este archivo se carga automáticamente al iniciar SPESION
 
-### Personalidad
-- Ambicioso y orientado a resultados
-- Introvertido pero abierto cuando hay confianza
-- Valora la eficiencia y la optimización del tiempo
-- Estilo comunicativo: directo, sin rodeos
-
-### Proyectos Activos
-1. **Civita/Nite**: App de eventos (Django/Supabase). Co-founder con 12.5% equity.
-2. **Creda**: Fondo de inversión con IA (MetaTrader 5/MQL5). Co-founder con 15% equity.
-3. **WhoHub**: CRM de networking personal basado en grafos. Proyecto individual.
-
-### Intereses Profesionales
-- Inteligencia Artificial y Machine Learning
-- Quantitative Finance y Trading Algorítmico
-- Psicología y Neurociencia aplicada
-- Emprendimiento y startups
-
-### Deporte y Salud
-- **Running**: Objetivo Media Maratón BCN < 1h30m
-- **Otros**: Padel, Ski, Gimnasio
-- Tracking: Garmin (HRV, sueño) + Strava
-
-### Finanzas Personales
-- Portfolio en Interactive Brokers + Crypto
-- Estrategia de inversión: 50% Core (ETFs), 35% Temático (Tech/IA), 15% Crypto
-- Aportación mensual: 700-900€
-- Visión: Independencia financiera a largo plazo
-
-### Contexto Emocional
-- Ruptura dolorosa hace 2 años que aún procesa
-- Necesita un asistente que sea estoico pero empático
-- Valora la honestidad brutal pero con tacto
-- Prefiere soluciones prácticas sobre consuelo vacío
+### Nota
+Crea el archivo `data/user_profile.md` con tu información personal.
+Consulta `data/user_profile.example.md` como plantilla.
 """
+
+
+def _load_user_profile() -> str:
+    """Load user profile from external file, falling back to default."""
+    profile_path = Path("./data/user_profile.md")
+    if profile_path.exists():
+        try:
+            content = profile_path.read_text(encoding="utf-8").strip()
+            if content:
+                return content
+        except Exception as e:
+            logger.warning(f"Could not read user profile: {e}")
+    return _DEFAULT_USER_PROFILE
+
+
+# Lazy-loaded cached value
+_user_profile_cache: str | None = None
+
+
+def get_user_profile() -> str:
+    """Return the user profile (cached after first load)."""
+    global _user_profile_cache
+    if _user_profile_cache is None:
+        _user_profile_cache = _load_user_profile()
+    return _user_profile_cache
+
+
+# For backward compatibility — modules that import USER_PROFILE directly
+# This evaluates once at import time; restart to reload profile changes.
+USER_PROFILE = get_user_profile()
 
 # =============================================================================
 # SUPERVISOR - ROUTER PRINCIPAL
