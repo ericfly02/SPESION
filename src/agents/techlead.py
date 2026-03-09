@@ -119,12 +119,25 @@ def create_techlead_agent(
     from src.tools.github_mcp import create_github_tools
     from src.tools.code_sandbox import create_sandbox_tools
     from src.tools.document_tools import create_document_tools
+    from src.tools.tool_factory import tool_factory_tools, get_tool_factory
     
     default_tools = [
         *create_github_tools(),
         *create_sandbox_tools(),
         *create_document_tools(),
+        *tool_factory_tools,          # Dynamic tool creation (OpenFang-inspired)
     ]
+    
+    # Load any custom tools from YAML manifests
+    try:
+        factory = get_tool_factory()
+        custom_tools = factory.load_all_manifests()
+        agent_tools = factory.get_tools_for_agent("techlead")
+        default_tools.extend(custom_tools)
+        default_tools.extend(agent_tools)
+        logger.info(f"TechLead: loaded {len(custom_tools)} manifest tools + {len(agent_tools)} registry tools")
+    except Exception as e:
+        logger.warning(f"TechLead: could not load custom tools: {e}")
     
     all_tools = default_tools + (tools or [])
     

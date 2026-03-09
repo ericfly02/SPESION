@@ -1,0 +1,57 @@
+# =============================================================================
+# Example Tool Manifest — Weather Checker
+# =============================================================================
+# This is an example of a SPESION dynamic tool definition.
+# Drop YAML files here and SPESION will auto-load them at startup.
+#
+# Inspired by OpenFang's HAND.toml concept:
+# - Declarative tool definition
+# - Agent assignment
+# - Risk level classification
+# - Trigger keywords for routing
+# =============================================================================
+
+name: check_weather
+description: "Get current weather for a city using wttr.in API. Input: city name."
+version: "1.0.0"
+author: spesion
+
+parameters:
+  - name: city
+    type: str
+    description: "City name to check weather for"
+    required: true
+
+code: |
+  data = json.loads(input_str) if input_str.startswith("{") else {"city": input_str}
+  city = data.get("city", input_str).strip()
+  response = httpx.get(f"https://wttr.in/{city}?format=j1", timeout=10)
+  if response.status_code == 200:
+      w = response.json()["current_condition"][0]
+      return (
+          f"🌤️ Weather in {city}:\n"
+          f"  Temperature: {w['temp_C']}°C (feels like {w['FeelsLikeC']}°C)\n"
+          f"  Condition: {w['weatherDesc'][0]['value']}\n"
+          f"  Humidity: {w['humidity']}%\n"
+          f"  Wind: {w['windspeedKmph']} km/h {w['winddir16Point']}"
+      )
+  return f"Could not get weather for {city}"
+
+agents:
+  - companion
+  - executive
+  - "*"
+
+risk_level: safe
+requires_approval: false
+
+trigger_keywords:
+  - weather
+  - temperature
+  - forecast
+  - rain
+  - sunny
+  - cold
+  - hot
+  - tiempo
+  - clima

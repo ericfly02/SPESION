@@ -1,0 +1,54 @@
+# =============================================================================
+# Example Tool Manifest — Crypto Price Checker
+# =============================================================================
+
+name: check_crypto_price
+description: "Get current price of a cryptocurrency from CoinGecko. Input: coin name (e.g., bitcoin, ethereum)."
+version: "1.0.0"
+author: spesion
+
+parameters:
+  - name: coin
+    type: str
+    description: "Cryptocurrency name (bitcoin, ethereum, solana, etc.)"
+    required: true
+
+code: |
+  data = json.loads(input_str) if input_str.startswith("{") else {"coin": input_str}
+  coin = data.get("coin", input_str).strip().lower()
+  response = httpx.get(
+      f"https://api.coingecko.com/api/v3/simple/price?ids={coin}&vs_currencies=usd,eur&include_24hr_change=true",
+      timeout=10
+  )
+  if response.status_code == 200:
+      prices = response.json()
+      if coin in prices:
+          p = prices[coin]
+          change = p.get("usd_24h_change", 0)
+          arrow = "📈" if change > 0 else "📉"
+          return (
+              f"{arrow} {coin.title()}:\n"
+              f"  USD: ${p['usd']:,.2f}\n"
+              f"  EUR: €{p['eur']:,.2f}\n"
+              f"  24h Change: {change:+.2f}%"
+          )
+      return f"Coin '{coin}' not found on CoinGecko"
+  return f"CoinGecko API error: {response.status_code}"
+
+agents:
+  - tycoon
+  - "*"
+
+risk_level: safe
+requires_approval: false
+
+trigger_keywords:
+  - crypto
+  - bitcoin
+  - btc
+  - ethereum
+  - eth
+  - solana
+  - price
+  - coin
+  - cryptocurrency

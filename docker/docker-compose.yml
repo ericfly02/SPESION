@@ -79,6 +79,7 @@ services:
     volumes:
       - spesion-data:/app/data        # Persistent: ChromaDB, SQLite, OAuth tokens
       - spesion-logs:/app/logs        # Persistent: application logs
+      - ../tools/manifests:/app/tools/manifests:ro  # Custom tool manifests (hot-reload)
       - /var/run/docker.sock:/var/run/docker.sock:ro  # Code sandbox
     depends_on:
       ollama:
