@@ -43,13 +43,22 @@ function WriteEnv([string]$k,[string]$v){
   }else{Add-Content $EnvFile -Value "$k=$v" -Encoding ASCII}
 }
 
-function RunCompose([string[]]$Args){
-  $composeArgs=@("compose","--env-file",$EnvFile,"-f","docker/docker-compose.yml")
-  if((Get-Content $EnvFile -Raw -ErrorAction SilentlyContinue) -match "(?m)^DEPLOY_MODE=production$"){
-    $composeArgs+=@("-f","docker/docker-compose.prod.yml")
+function RunCompose {
+  param(
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$ComposeCmd
+  )
+
+  $composeArgs = @("compose", "--env-file", $EnvFile, "-f", "docker/docker-compose.yml")
+  if ((Get-Content $EnvFile -Raw -ErrorAction SilentlyContinue) -match "(?m)^DEPLOY_MODE=production$") {
+    $composeArgs += @("-f", "docker/docker-compose.prod.yml")
   }
-  $composeArgs += $Args
+  $composeArgs += $ComposeCmd
+
   & docker @composeArgs
+  if ($LASTEXITCODE -ne 0) {
+    throw ("docker compose failed: " + ($ComposeCmd -join " "))
+  }
 }
 
 Section "SPESION 3.0 setup (Windows safe mode)"
@@ -168,8 +177,8 @@ Set-Location $ProjectDir
 Write-Host "Home mode is the best first boot on Windows Docker Desktop."
 Write-Host "Production mode adds Caddy and expects your public domain to already be configured."
 if(AskYesNo "Use production compose with Caddy?" 'n'){WriteEnv "DEPLOY_MODE" "production"}else{WriteEnv "DEPLOY_MODE" "home"}
-RunCompose @("build")
-$upResult = RunCompose @("up","-d")
+RunCompose build
+RunCompose up -d
 
 try{docker exec spesion-ollama ollama pull llama3.2:3b|Out-Null}catch{WWarn "Could not pull llama3.2:3b inside container"}
 try{docker exec spesion-ollama ollama pull qwen2.5:7b|Out-Null}catch{WWarn "Could not pull qwen2.5:7b inside container"}
