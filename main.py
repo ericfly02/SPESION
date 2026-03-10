@@ -402,7 +402,7 @@ Ejemplos:
             import uvicorn
             from src.core.config import settings
             uvicorn.run(
-                "src.interfaces.server:app",
+                "src.api.server:app",
                 host=settings.api.host,
                 port=settings.api.port,
                 reload=False,

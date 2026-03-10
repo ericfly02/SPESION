@@ -68,6 +68,7 @@ EXPOSE 8100
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8100/health || exit 1
 
-# Comando por defecto (API + heartbeat + telegram)
-CMD ["python", "main.py", "--api", "--heartbeat", "--telegram"]
+# Default: unified API server; Telegram/Discord/Heartbeat are launched from
+# src.api.server lifespan when related env vars are present.
+CMD ["python", "-m", "uvicorn", "src.api.server:app", "--host", "0.0.0.0", "--port", "8100", "--workers", "1"]
 

@@ -85,7 +85,18 @@ function Show-Help {
 switch ($Command) {
     "start" {
         Write-Info "Starting services"
-        Invoke-Compose @("up", "-d")
+        $withBuild = $false
+        if ($RemainingArgs -and ($RemainingArgs -contains "--build")) {
+            $withBuild = $true
+        }
+
+        if ($withBuild) {
+            Write-Info "Rebuilding images before start"
+            Invoke-Compose @("build")
+            Invoke-Compose @("up", "-d", "--force-recreate")
+        } else {
+            Invoke-Compose @("up", "-d")
+        }
         Start-Sleep -Seconds 3
         Invoke-Compose @("ps")
         Write-Host ""
