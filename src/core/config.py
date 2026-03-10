@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import json
 from pathlib import Path
+from typing import Any
 from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator
@@ -85,6 +87,39 @@ class TelegramSettings(BaseSettings):
         default_factory=list,
         description="IDs de usuarios permitidos (vacío = todos)",
     )
+
+    @field_validator("allowed_user_ids", mode="before")
+    @classmethod
+    def _parse_allowed_user_ids(cls, value: Any) -> list[int]:
+        """Accept list, JSON list string, CSV string, or single int/string."""
+        if value is None or value == "":
+            return []
+        if isinstance(value, list):
+            return [int(v) for v in value if str(v).strip()]
+        if isinstance(value, int):
+            return [value]
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                return []
+
+            # JSON list or JSON scalar (e.g. "[123]" or "123")
+            if raw.startswith("["):
+                try:
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, list):
+                        return [int(v) for v in parsed if str(v).strip()]
+                except Exception:
+                    pass
+
+            # CSV fallback (e.g. "123,456")
+            if "," in raw:
+                return [int(part.strip()) for part in raw.split(",") if part.strip()]
+
+            # Single scalar string (e.g. "123")
+            return [int(raw)]
+
+        raise TypeError("allowed_user_ids format not supported")
 
 
 class NotionSettings(BaseSettings):
@@ -433,6 +468,36 @@ class DiscordSettings(BaseSettings):
         default_factory=list,
         description="IDs de usuarios permitidos (vacío = todos)",
     )
+
+    @field_validator("allowed_user_ids", mode="before")
+    @classmethod
+    def _parse_allowed_user_ids(cls, value: Any) -> list[int]:
+        """Accept list, JSON list string, CSV string, or single int/string."""
+        if value is None or value == "":
+            return []
+        if isinstance(value, list):
+            return [int(v) for v in value if str(v).strip()]
+        if isinstance(value, int):
+            return [value]
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                return []
+
+            if raw.startswith("["):
+                try:
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, list):
+                        return [int(v) for v in parsed if str(v).strip()]
+                except Exception:
+                    pass
+
+            if "," in raw:
+                return [int(part.strip()) for part in raw.split(",") if part.strip()]
+
+            return [int(raw)]
+
+        raise TypeError("allowed_user_ids format not supported")
 
 
 class APISettings(BaseSettings):
