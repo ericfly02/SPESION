@@ -262,13 +262,14 @@ def create_executive_agent(
         Instancia configurada del ExecutiveAgent
     """
     from src.tools.calendar_mcp import create_calendar_tools
-    from src.tools.notion_mcp import create_notion_tasks_tools
+    from src.tools.notion_mcp import create_notion_tasks_tools, create_notion_journal_tools
     from src.tools.notion_mcp import (
         setup_books_database,
         setup_trainings_database,
         add_book,
         log_training_session,
         get_training_for_date,
+        check_notion_connection,
     )
     from src.tools.autonomous_tools import create_autonomous_tools
     from src.tools.email_tool import create_email_tools
@@ -278,12 +279,14 @@ def create_executive_agent(
     default_tools = [
         *create_calendar_tools(),
         *create_notion_tasks_tools(),
+        *create_notion_journal_tools(),
         # Notion extra DBs / operations (sin re-ejecutar setup completo)
         setup_books_database,
         setup_trainings_database,
         add_book,
         log_training_session,
         get_training_for_date,
+        check_notion_connection,
         # SPESION 3.0: Autonomous execution engine
         *create_autonomous_tools(),
         *create_email_tools(),

@@ -176,6 +176,23 @@ Responde SOLO con el nombre del agente."""
             }
             if any(k in text_lower for k in build_markers):
                 return "executive"
+
+            # Financial Notion queries → tycoon
+            finance_markers = {
+                "portfolio", "portafolio", "inversión", "inversion", "inversiones",
+                "holdings", "posiciones", "rebalance", "rebalanceo", "finanzas",
+                "finance", "stocks", "acciones", "crypto", "etf",
+            }
+            if any(k in text_lower for k in finance_markers):
+                return "tycoon"
+
+            # Tasks / agenda in Notion → executive
+            task_markers = {"tarea", "tareas", "tasks", "agenda", "calendario"}
+            if any(k in text_lower for k in task_markers):
+                return "executive"
+
+            # Generic Notion mention → executive (most operational)
+            return "executive"
         
         for keyword, agent in INTENT_TO_AGENT.items():
             if keyword in text_lower:
@@ -185,6 +202,11 @@ Responde SOLO con el nombre del agente."""
         specific_keywords = {
             "arxiv": "scholar",
             "paper": "scholar",
+            "papers": "scholar",
+            "research": "scholar",
+            "noticias": "scholar",
+            "news": "scholar",
+            "briefing": "scholar",
             "garmin": "coach",
             "strava": "coach",
             "entreno": "coach",
@@ -192,19 +214,41 @@ Responde SOLO con el nombre del agente."""
             "gym": "coach",
             "correr": "coach",
             "run": "coach",
+            "sleep": "coach",
+            "sueño": "coach",
+            "hrv": "coach",
+            "recovery": "coach",
             "ibkr": "tycoon",
             "crypto": "tycoon",
             "bitcoin": "tycoon",
             "etf": "tycoon",
+            "portfolio": "tycoon",
+            "portafolio": "tycoon",
+            "inversión": "tycoon",
+            "inversion": "tycoon",
+            "inversiones": "tycoon",
+            "rebalanceo": "tycoon",
+            "rebalance": "tycoon",
+            "finanzas": "tycoon",
+            "finance": "tycoon",
+            "dca": "tycoon",
+            "acciones": "tycoon",
+            "stocks": "tycoon",
+            "trading": "tycoon",
             "journal": "companion",
             "diario": "companion",
             "triste": "companion",
             "solo": "companion",
+            "ánimo": "companion",
+            "animo": "companion",
+            "siento": "companion",
             "github": "techlead",
             "pr": "techlead",
             "bug": "techlead",
             "error": "techlead",
             "deploy": "techlead",
+            "code": "techlead",
+            "código": "techlead",
             "linkedin": "connector",
             "contacto": "connector",
             "evento": "connector",
@@ -213,6 +257,13 @@ Responde SOLO con el nombre del agente."""
             "reunion": "executive",
             "tarea": "executive",
             "todo": "executive",
+            "agenda": "executive",
+            "calendario": "executive",
+            "calendar": "executive",
+            "mañana": "executive",
+            "tomorrow": "executive",
+            "today": "executive",
+            "hoy": "executive",
             "status": "sentinel",
             "backup": "sentinel",
             "sentinel": "sentinel",
@@ -312,6 +363,7 @@ Responde SOLO con el nombre del agente."""
         """Maneja el mensaje directamente sin delegar.
         
         Usado para saludos, preguntas generales, etc.
+        Optimized: uses a concise prompt for fast response.
         
         Args:
             state: Estado actual
@@ -323,7 +375,10 @@ Responde SOLO con el nombre del agente."""
             return state
         
         messages = [
-            SystemMessage(content=SUPERVISOR_PROMPT),
+            SystemMessage(content=(
+                "Eres SPESION, asistente personal. Responde de forma directa, "
+                "en español, con personalidad pero conciso. Usa 'tú'."
+            )),
             *state["messages"][-5:],  # Últimos 5 mensajes para contexto
         ]
         

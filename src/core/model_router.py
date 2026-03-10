@@ -133,12 +133,12 @@ MODEL_CATALOG: dict[str, ModelSpec] = {
 AGENT_COMPLEXITY: dict[str, Complexity] = {
     "supervisor": Complexity.TRIVIAL,     # just routing — use small local
     "sentinel": Complexity.LIGHT,         # PII checks, status — local
-    "companion": Complexity.LIGHT,        # journaling — local (privacy)
-    "coach": Complexity.LIGHT,            # fitness — local
-    "executive": Complexity.MODERATE,     # scheduling — local or light cloud
+    "companion": Complexity.MODERATE,     # journaling — needs decent reasoning
+    "coach": Complexity.MODERATE,         # fitness analysis — needs tool calling
+    "executive": Complexity.HEAVY,        # many tools (calendar, Notion, email, phone) — needs cloud
     "connector": Complexity.MODERATE,     # networking — moderate
     "scholar": Complexity.HEAVY,          # deep research — cloud
-    "tycoon": Complexity.HEAVY,           # financial analysis — cloud
+    "tycoon": Complexity.HEAVY,           # financial analysis + Notion tools — cloud
     "techlead": Complexity.CRITICAL,      # code generation — best cloud
 }
 
@@ -148,7 +148,7 @@ AGENT_PRIVACY: dict[str, Privacy] = {
     "coach": Privacy.SENSITIVE,      # health data prefers local
     "sentinel": Privacy.PRIVATE,     # security data stays local
     "scholar": Privacy.PUBLIC,
-    "tycoon": Privacy.SENSITIVE,     # financial data prefers local
+    "tycoon": Privacy.PUBLIC,        # needs cloud for tool-calling (Notion/finance)
     "techlead": Privacy.PUBLIC,
     "connector": Privacy.PUBLIC,
     "executive": Privacy.PUBLIC,

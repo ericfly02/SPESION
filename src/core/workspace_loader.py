@@ -125,7 +125,7 @@ class WorkspaceLoader:
 
         if not force_reload and self._cache is not None:
             age = time.time() - self._cache_time
-            if age < 60:
+            if age < 300:  # Cache for 5 minutes (workspace files rarely change)
                 return self._cache
 
         ctx = WorkspaceContext(

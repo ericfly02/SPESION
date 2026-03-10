@@ -55,7 +55,36 @@ class TycoonAgent(BaseAgent):
         return get_agent_prompt("tycoon")
     
     def invoke(self, state: AgentState) -> AgentState:
-        """Procesa solicitudes financieras."""
+        """Procesa solicitudes financieras.
+        
+        Prefetches portfolio data for faster autonomous responses.
+        """
+        # Prefetch portfolio data to avoid hallucination
+        try:
+            from langchain_core.messages import HumanMessage
+            from src.tools.notion_mcp import get_portfolio_holdings
+
+            last_user = None
+            for msg in reversed(state.get("messages", [])):
+                if isinstance(msg, HumanMessage):
+                    last_user = str(msg.content).lower()
+                    break
+
+            if last_user:
+                finance_markers = {
+                    "portfolio", "portafolio", "inversión", "inversion", "inversiones",
+                    "rebalanceo", "rebalance", "holdings", "posiciones", "asignación",
+                    "allocation", "cómo va", "como va", "resumen", "cuánto tengo",
+                    "cuanto tengo", "rendimiento", "performance", "estado",
+                }
+                if any(k in last_user for k in finance_markers):
+                    holdings = get_portfolio_holdings.invoke({})
+                    state["retrieved_context"] = state.get("retrieved_context", []) + [
+                        f"[PORTFOLIO_HOLDINGS]: {holdings}",
+                    ]
+        except Exception:
+            pass
+
         state = super().invoke(state)
         return state
     
@@ -160,10 +189,11 @@ def create_tycoon_agent(
         Instancia configurada del TycoonAgent
     """
     from src.tools.finance_tools import create_finance_tools
-    from src.tools.notion_mcp import create_notion_finance_tools
+    from src.tools.notion_mcp import create_notion_finance_tools, check_notion_connection
     from src.tools.investments_sync import create_investment_sync_tools
     from src.tools.autonomous_tools import create_autonomous_tools
     from src.tools.browser_tool import create_browser_tools
+    from src.tools.search_tool import create_search_tools
     
     default_tools = (
         create_finance_tools()
@@ -171,6 +201,8 @@ def create_tycoon_agent(
         + create_investment_sync_tools()
         + create_autonomous_tools()
         + create_browser_tools()
+        + create_search_tools()
+        + [check_notion_connection]
     )
     all_tools = default_tools + (tools or [])
     

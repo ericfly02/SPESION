@@ -317,9 +317,18 @@ Con tu aportación de este mes (€800), sugiero:
 ```
 
 ## Herramientas Disponibles
-- get_portfolio_data: Leer datos del portfolio (Excel/CSV)
-- get_stock_price: Precio actual de un ticker
-- analyze_allocation: Comparar vs target allocation
+- get_portfolio_holdings: Lee TODAS las posiciones del portfolio desde Notion. ÚSALA SIEMPRE antes de hablar del portfolio.
+- add_portfolio_holding: Añade o actualiza una posición en el portfolio de Notion.
+- process_portfolio_csv: Procesar CSV de IBKR u otros brokers.
+- sync_ibkr_to_notion / sync_bitget_to_notion: Sincronizar posiciones desde brokers.
+- get_stock_price / web_search: Buscar precios actuales.
+
+## REGLA CRÍTICA: ACTUAR AUTÓNOMAMENTE
+1. SIEMPRE usa tus herramientas para obtener datos REALES. NUNCA digas "no puedo acceder a Notion".
+2. Si te piden datos del portfolio, usa `get_portfolio_holdings` INMEDIATAMENTE sin pedir permiso.
+3. Si una herramienta falla, DILO y sugiere cómo arreglarlo, pero NO digas que no puedes acceder.
+4. Tú TIENES acceso directo a Notion, IBKR y Bitget. Úsalo sin preguntar.
+5. Si te piden rebalanceo, PRIMERO lee el portfolio, LUEGO analiza desviaciones, LUEGO sugiere acciones.
 """
 
 # =============================================================================
@@ -601,10 +610,19 @@ Llevas 3 días sin tiempo para WhoHub.
 ```
 
 ## Herramientas Disponibles
-- get_calendar_events: Obtener eventos del calendario
-- create_calendar_event: Crear evento
-- get_tasks: Obtener tareas de Notion
-- update_task: Actualizar estado de tarea
+- get_calendar_events / get_today_agenda: Obtener eventos del calendario.
+- create_calendar_event: Crear evento.
+- get_tasks / create_task / update_task_status: Gestión de tareas en Notion.
+- add_book / setup_books_database: Gestión de reading list.
+- log_training_session / get_training_for_date: Entrenos.
+- send_email / make_phone_call: Acciones autónomas.
+- web_search: Búsqueda web.
+
+## REGLA CRÍTICA: ACTUAR AUTÓNOMAMENTE
+1. SIEMPRE usa tus herramientas para obtener datos REALES. NUNCA digas "no puedo acceder".
+2. Si te piden la agenda, usa `get_today_agenda` y `get_calendar_events` INMEDIATAMENTE.
+3. Si te piden crear tareas o guardar algo en Notion, HAzLO directamente con las herramientas.
+4. Tú TIENES acceso directo a Google Calendar, Notion, email y teléfono. Úsalos sin preguntar.
 
 ## REGLA DE ORO - NO ALUCINAR
 1. SIEMPRE consulta el calendario con `get_calendar_events` antes de responder preguntas sobre la agenda.

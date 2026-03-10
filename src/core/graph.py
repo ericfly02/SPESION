@@ -94,7 +94,12 @@ def create_spesion_graph() -> CompiledStateGraph:
     
     # Nodo de Ejecución de Herramientas
     def tools_node(state: AgentState) -> AgentState:
-        """Ejecuta las herramientas solicitadas por el agente."""
+        """Ejecuta las herramientas solicitadas por el agente.
+        
+        Supports parallel tool execution for faster response times.
+        """
+        import concurrent.futures
+
         logger.debug("Ejecutando nodo de Herramientas")
         sender_name = state.get("sender")
         if not sender_name or sender_name not in agents:
@@ -111,39 +116,41 @@ def create_spesion_graph() -> CompiledStateGraph:
             
         tool_calls = last_message.tool_calls
         
-        results = []
-        for tool_call in tool_calls:
+        def _execute_tool(tool_call):
             tool_name = tool_call["name"]
             tool = tools_map.get(tool_name)
-            
             if tool:
                 logger.info(f"Ejecutando herramienta: {tool_name}")
                 try:
-                    # Invocar herramienta
                     output = tool.invoke(tool_call["args"])
-                    
-                    # Crear mensaje de respuesta de tool
-                    results.append(ToolMessage(
+                    return ToolMessage(
                         tool_call_id=tool_call["id"],
                         content=str(output),
                         name=tool_name
-                    ))
+                    )
                 except Exception as e:
                     logger.error(f"Error en tool {tool_name}: {e}")
-                    results.append(ToolMessage(
+                    return ToolMessage(
                         tool_call_id=tool_call["id"],
                         content=f"Error ejecutando {tool_name}: {str(e)}",
                         name=tool_name,
                         status="error"
-                    ))
+                    )
             else:
                 logger.warning(f"Herramienta no encontrada: {tool_name}")
-                results.append(ToolMessage(
+                return ToolMessage(
                     tool_call_id=tool_call["id"],
                     content=f"Error: Herramienta {tool_name} no disponible",
                     name=tool_name,
                     status="error"
-                ))
+                )
+
+        # Execute tools in parallel if multiple
+        if len(tool_calls) > 1:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+                results = list(pool.map(_execute_tool, tool_calls))
+        else:
+            results = [_execute_tool(tool_calls[0])]
         
         return {"messages": results, "requires_tool_execution": False}
 
@@ -223,8 +230,17 @@ def create_spesion_graph() -> CompiledStateGraph:
     )
     
     # Lógica de routing post-agente (Tools o Consolidate)
+    # Track tool iterations to prevent infinite loops
+    MAX_TOOL_ITERATIONS = 5
+
     def route_from_agent(state: AgentState) -> Literal["tools", "consolidate"]:
         if state.get("requires_tool_execution"):
+            # Guard against infinite tool loops
+            iters = state.get("_tool_iterations", 0)
+            if iters >= MAX_TOOL_ITERATIONS:
+                logger.warning(f"Max tool iterations ({MAX_TOOL_ITERATIONS}) reached, consolidating")
+                return "consolidate"
+            state["_tool_iterations"] = iters + 1
             return "tools"
         return "consolidate"
 
