@@ -39,8 +39,17 @@ function WriteEnv([string]$k,[string]$v){
   if($null -eq $c){$c=""}
   if($c -match "(?m)^$([regex]::Escape($k))="){
     $c=$c -replace "(?m)^$([regex]::Escape($k))=.*$", "$k=$v"
-    Set-Content $EnvFile -Value $c -Encoding UTF8
-  }else{Add-Content $EnvFile -Value "$k=$v" -Encoding UTF8}
+    Set-Content $EnvFile -Value $c -Encoding ASCII
+  }else{Add-Content $EnvFile -Value "$k=$v" -Encoding ASCII}
+}
+
+function RunCompose([string[]]$Args){
+  $composeArgs=@("compose","--env-file",$EnvFile,"-f","docker/docker-compose.yml")
+  if((Get-Content $EnvFile -Raw -ErrorAction SilentlyContinue) -match "(?m)^DEPLOY_MODE=production$"){
+    $composeArgs+=@("-f","docker/docker-compose.prod.yml")
+  }
+  $composeArgs += $Args
+  & docker @composeArgs
 }
 
 Section "SPESION 3.0 setup (Windows safe mode)"
@@ -76,7 +85,7 @@ Section "2/5 Environment"
 if(Test-Path $EnvFile){
   if(AskYesNo "Existing .env found. Rebuild from scratch?" 'n'){
     Copy-Item $EnvFile ($EnvFile+".backup."+(Get-Date -Format "yyyyMMddHHmmss")) -Force
-    Set-Content $EnvFile -Value "" -Encoding UTF8
+    Set-Content $EnvFile -Value "" -Encoding ASCII
   }
 }
 
@@ -85,11 +94,40 @@ WriteEnv "SPESION_PORT" "8100"
 WriteEnv "DEBUG" "false"
 WriteEnv "LOG_LEVEL" "INFO"
 WriteEnv "OLLAMA_BASE_URL" "http://ollama:11434"
+WriteEnv "OPENAI_API_KEY" ""
+WriteEnv "ANTHROPIC_API_KEY" ""
+WriteEnv "TELEGRAM_BOT_TOKEN" ""
+WriteEnv "TELEGRAM_ALLOWED_USER_IDS" ""
+WriteEnv "DISCORD_BOT_TOKEN" ""
+WriteEnv "DISCORD_GUILD_ID" ""
+WriteEnv "NOTION_API_KEY" ""
+WriteEnv "NOTION_TASKS_DATABASE_ID" ""
+WriteEnv "NOTION_JOURNAL_DATABASE_ID" ""
+WriteEnv "NOTION_CRM_DATABASE_ID" ""
+WriteEnv "NOTION_BOOKS_DATABASE_ID" ""
+WriteEnv "NOTION_TRAININGS_DATABASE_ID" ""
+WriteEnv "NOTION_FINANCE_DATABASE_ID" ""
+WriteEnv "NOTION_TRANSACTIONS_DATABASE_ID" ""
+WriteEnv "GARMIN_EMAIL" ""
+WriteEnv "GARMIN_PASSWORD" ""
+WriteEnv "IBKR_FLEX_TOKEN" ""
+WriteEnv "IBKR_FLEX_QUERY_ID" ""
+WriteEnv "TWILIO_ACCOUNT_SID" ""
+WriteEnv "TWILIO_AUTH_TOKEN" ""
+WriteEnv "TWILIO_PHONE_NUMBER" ""
+WriteEnv "SMTP_USERNAME" ""
+WriteEnv "SMTP_PASSWORD" ""
+WriteEnv "SMTP_FROM_NAME" "SPESION"
+WriteEnv "TAVILY_API_KEY" ""
+WriteEnv "GITHUB_TOKEN" ""
 WriteEnv "AUTONOMOUS_ENABLED" "true"
 WriteEnv "HEARTBEAT_ENABLED" "true"
 WriteEnv "HEARTBEAT_TIMEZONE" (Ask "Timezone" "Europe/Madrid")
 WriteEnv "CHROMA_PERSIST_DIR" "/app/data/chroma"
 WriteEnv "SQLITE_DB_PATH" "/app/data/spesion.db"
+WriteEnv "SMTP_HOST" "smtp.gmail.com"
+WriteEnv "SMTP_PORT" "587"
+WriteEnv "TWILIO_CALLBACK_URL" ""
 
 $key=-join ((48..57)+(65..90)+(97..122)|Get-Random -Count 32|ForEach-Object{[char]$_})
 WriteEnv "SPESION_API_KEY" $key
@@ -127,13 +165,14 @@ if(-not(Test-Path $profile) -and (AskYesNo "Create basic user profile?" 'y')){
 
 Section "4/5 Deploy"
 Set-Location $ProjectDir
-$composeArgs="-f docker/docker-compose.yml"
-if(AskYesNo "Use production compose with Caddy?" 'n'){$composeArgs+=" -f docker/docker-compose.prod.yml"}
-Invoke-Expression ("docker compose "+$composeArgs+" build")
-Invoke-Expression ("docker compose "+$composeArgs+" up -d")
+Write-Host "Home mode is the best first boot on Windows Docker Desktop."
+Write-Host "Production mode adds Caddy and expects your public domain to already be configured."
+if(AskYesNo "Use production compose with Caddy?" 'n'){WriteEnv "DEPLOY_MODE" "production"}else{WriteEnv "DEPLOY_MODE" "home"}
+RunCompose @("build")
+$upResult = RunCompose @("up","-d")
 
-try{docker exec spesion-ollama ollama pull llama3.2:3b|Out-Null}catch{}
-try{docker exec spesion-ollama ollama pull qwen2.5:7b|Out-Null}catch{}
+try{docker exec spesion-ollama ollama pull llama3.2:3b|Out-Null}catch{WWarn "Could not pull llama3.2:3b inside container"}
+try{docker exec spesion-ollama ollama pull qwen2.5:7b|Out-Null}catch{WWarn "Could not pull qwen2.5:7b inside container"}
 
 Section "5/5 Verify"
 docker ps --format "table {{.Names}}`t{{.Status}}" --filter "name=spesion"

@@ -33,7 +33,6 @@ services:
     volumes:
       - spesion-data:/app/data
       - spesion-logs:/app/logs
-      - /var/run/docker.sock:/var/run/docker.sock:ro
     # Port NOT exposed externally — only Caddy can reach it
     expose:
       - "8100"
@@ -126,21 +125,6 @@ services:
         limits:
           memory: 128M
           cpus: "0.5"
-
-  # ─── SANDBOX (isolated code execution) ─────────────────────────────────
-  sandbox:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.sandbox
-    container_name: spesion-sandbox
-    profiles:
-      - sandbox
-    network_mode: none
-    mem_limit: 256m
-    cpus: 0.5
-    read_only: true
-    security_opt:
-      - no-new-privileges:true
 
 volumes:
   spesion-data:

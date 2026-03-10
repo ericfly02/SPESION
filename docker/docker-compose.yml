@@ -2,8 +2,6 @@
 # Usage:
 #   Development : docker compose up
 #   Production  : docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-version: '3.8'
-
 services:
   # ==========================================================================
   # SPESION - Servicio Principal
@@ -79,8 +77,8 @@ services:
     volumes:
       - spesion-data:/app/data        # Persistent: ChromaDB, SQLite, OAuth tokens
       - spesion-logs:/app/logs        # Persistent: application logs
-      - ../tools/manifests:/app/tools/manifests:ro  # Custom tool manifests (hot-reload)
-      - /var/run/docker.sock:/var/run/docker.sock:ro  # Code sandbox
+      # Tool manifests are already copied into the image during docker build.
+      # Avoid host bind mounts here for better Windows Docker Desktop support.
     depends_on:
       ollama:
         condition: service_healthy
