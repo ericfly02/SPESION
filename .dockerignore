@@ -1,0 +1,48 @@
+# VCS
+.git
+.gitignore
+.gitattributes
+
+# Python envs / caches
+.venv/
+venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local data (mounted via volumes, do not bake into image)
+data/
+backups/
+logs/
+
+# Secrets / local env
+.env
+.env.*
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Docs and analysis (not needed at runtime)
+*.md
+architecture.md
+SPESION_SETUP.md
+SPESION_3_0.md
+SETUP_GUIDE.md
+STRATEGIC_ANALYSIS.md
+
+# Local scripts / debug helpers not needed in runtime container
+verify_*.py
+debug_*.py

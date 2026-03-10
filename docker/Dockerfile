@@ -40,9 +40,8 @@ WORKDIR /app
 # Copiar requirements primero (para cache de Docker)
 COPY requirements.txt .
 
-# Instalar dependencias de Python (incluye autonomous engine)
-RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir twilio playwright
+# Instalar dependencias de Python
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Instalar Chromium para Playwright (como root antes de cambiar usuario)
 RUN playwright install chromium
