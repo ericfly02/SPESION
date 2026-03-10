@@ -116,7 +116,7 @@ services:
     networks:
       - spesion-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ["CMD", "ollama", "list"]
       interval: 30s
       timeout: 10s
       start_period: 30s

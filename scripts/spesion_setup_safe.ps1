@@ -180,8 +180,37 @@ if(AskYesNo "Use production compose with Caddy?" 'n'){WriteEnv "DEPLOY_MODE" "pr
 RunCompose build
 RunCompose up -d
 
-try{docker exec spesion-ollama ollama pull llama3.2:3b|Out-Null}catch{WWarn "Could not pull llama3.2:3b inside container"}
-try{docker exec spesion-ollama ollama pull qwen2.5:7b|Out-Null}catch{WWarn "Could not pull qwen2.5:7b inside container"}
+# Some Windows Docker Desktop setups occasionally leave containers in "Created"
+# right after compose up. Try an explicit start pass.
+try {
+  $created = docker ps -a --filter "name=spesion" --filter "status=created" --format "{{.Names}}"
+  if ($created) {
+    WWarn "Detected containers in Created state. Running explicit compose start."
+    RunCompose start
+  }
+} catch {
+  WWarn "Could not run Created-state recovery step"
+}
+
+WInfo "Waiting for ollama container to become ready"
+$ollamaReady=$false
+1..60 | ForEach-Object {
+  Start-Sleep 2
+  try {
+    docker exec spesion-ollama curl -sf http://localhost:11434/api/tags | Out-Null
+    $ollamaReady=$true
+    break
+  } catch {}
+}
+
+if($ollamaReady){
+  WInfo "Pulling local model llama3.2:3b (first time may take several minutes)"
+  try{docker exec spesion-ollama ollama pull llama3.2:3b}catch{WWarn "Could not pull llama3.2:3b inside container"}
+  WInfo "Pulling local model qwen2.5:7b (first time may take several minutes)"
+  try{docker exec spesion-ollama ollama pull qwen2.5:7b}catch{WWarn "Could not pull qwen2.5:7b inside container"}
+} else {
+  WWarn "ollama is not ready yet; skipping model pull for now"
+}
 
 Section "5/5 Verify"
 docker ps --format "table {{.Names}}`t{{.Status}}" --filter "name=spesion"

@@ -88,6 +88,15 @@ switch ($Command) {
         Invoke-Compose @("up", "-d")
         Start-Sleep -Seconds 3
         Invoke-Compose @("ps")
+        Write-Host ""
+        try {
+            Invoke-RestMethod -Uri "http://localhost:8100/health" -TimeoutSec 5 | Out-Null
+            Write-Ok "API healthy"
+        } catch {
+            Write-Warn "API not healthy yet; showing recent logs"
+            docker logs --tail 80 spesion 2>$null
+            docker logs --tail 80 spesion-ollama 2>$null
+        }
     }
     "stop" {
         Write-Info "Stopping services"
@@ -101,6 +110,9 @@ switch ($Command) {
         Write-Host ""
         Write-Host "Containers:" -ForegroundColor Cyan
         docker ps --format "table {{.Names}}`t{{.Status}}`t{{.Ports}}" --filter "name=spesion"
+        Write-Host ""
+        Write-Host "Containers (including exited):" -ForegroundColor Cyan
+        docker ps -a --format "table {{.Names}}`t{{.Status}}`t{{.Image}}" --filter "name=spesion"
         Write-Host ""
         Write-Host "API health:" -ForegroundColor Cyan
         try {
@@ -116,6 +128,12 @@ switch ($Command) {
             docker exec spesion-ollama ollama list
         } catch {
             Write-Warn "spesion-ollama container not available"
+            Write-Host ""
+            Write-Host "Recent logs (spesion-ollama):" -ForegroundColor Cyan
+            docker logs --tail 80 spesion-ollama 2>$null
+            Write-Host ""
+            Write-Host "Recent logs (spesion):" -ForegroundColor Cyan
+            docker logs --tail 80 spesion 2>$null
         }
     }
     "logs" {
